@@ -1,0 +1,7 @@
+textual
+numpy
+pyaudio
+pydub
+sounddevice
+
+openai[realtime]
