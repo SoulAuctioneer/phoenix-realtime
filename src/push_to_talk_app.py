@@ -10,7 +10,9 @@ from typing import Any, cast
 from typing_extensions import override
 
 from textual import events
-from audio_util import CHANNELS, SAMPLE_RATE, SOUNDCARD_INDEX, AudioPlayerAsync
+from audio_util import (
+    CHANNELS, SAMPLE_RATE, INPUT_DEVICE_INDEX, AudioPlayerAsync
+)
 from textual.app import App, ComposeResult
 from textual.widgets import Button, Static, RichLog
 from textual.reactive import reactive
@@ -194,7 +196,7 @@ class RealtimeApp(App[None]):
         read_size = int(SAMPLE_RATE * 0.02)
 
         stream = sd.InputStream(
-            device=SOUNDCARD_INDEX,  # Use ReSpeaker device
+            device=INPUT_DEVICE_INDEX,  # Use ReSpeaker device for input
             channels=CHANNELS,
             samplerate=SAMPLE_RATE,
             dtype="int16",

@@ -18,7 +18,8 @@ SAMPLE_RATE = 44100  # Match ReSpeaker's default sample rate
 FORMAT = pyaudio.paInt16
 CHANNELS = 2  # ReSpeaker has 2 channels
 SOUNDCARD_WIDTH = 2
-SOUNDCARD_INDEX = 0  # Device index for ReSpeaker (seeed-2mic-voicecard)
+INPUT_DEVICE_INDEX = 0  # Device index for ReSpeaker input (seeed-2mic-voicecard)
+OUTPUT_DEVICE_INDEX = 3  # Device index for output (dmixed)
 
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
 
@@ -72,13 +73,12 @@ class AudioPlayerAsync:
         self.lock = threading.Lock()
         self.stream = sd.OutputStream(
             callback=self.callback,
-            device=SOUNDCARD_INDEX,
-            samplerate=SAMPLE_RATE,
-            channels=CHANNELS,
+            device=OUTPUT_DEVICE_INDEX,
+            samplerate=48000,  # dmixed device uses 48000Hz
+            channels=2,  # dmixed device has 2 output channels
             dtype=np.int16,
-            blocksize=int(CHUNK_LENGTH_S * SAMPLE_RATE),
-            latency='low',  # Use low latency mode
-            extra_settings=None  # Let ALSA choose the best settings
+            blocksize=int(CHUNK_LENGTH_S * 48000),  # adjust blocksize for new sample rate
+            latency='low'  # Use low latency mode
         )
         self.playing = False
         self._frame_count = 0
