@@ -23,7 +23,9 @@ def set_debug_callback(callback: Callable[[str], None]):
 def debug_print(msg: str):
     if debug_callback:
         debug_callback(f"[DEBUG] {msg}\n")
-    print(msg)  # Keep stdout printing for non-UI contexts
+    else:
+        # Only print to stdout if no callback is set
+        print(msg)
 
 CHUNK_LENGTH_S = 0.05  # 100ms
 SAMPLE_RATE = 48000  # Use 48kHz which is supported by all devices

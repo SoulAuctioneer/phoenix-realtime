@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import base64
 import asyncio
-from typing import Any, cast
+import sys
+from typing import Any, cast, TextIO
 from typing_extensions import override
 
 from textual import events
@@ -45,6 +46,29 @@ class AudioStatusIndicator(Static):
             "🔴 Recording... (Press K to stop)" if self.is_recording else "⚪ Press K to start recording (Q to quit)"
         )
         return status
+
+
+class UIStdoutRedirector(TextIO):
+    """A file-like object that redirects stdout to the UI."""
+    def __init__(self, app: RealtimeApp):
+        self.app = app
+        self.buffer = ""
+
+    def write(self, text: str) -> int:
+        if self.app.is_running:
+            try:
+                bottom_pane = self.app.query_one("#bottom-pane", RichLog)
+                bottom_pane.write(text)
+            except Exception:
+                # Fallback to original stdout if UI isn't ready
+                sys.__stdout__.write(text)
+        else:
+            # Fallback to original stdout if app isn't running
+            sys.__stdout__.write(text)
+        return len(text)
+
+    def flush(self) -> None:
+        pass
 
 
 class RealtimeApp(App[None]):
@@ -129,6 +153,9 @@ class RealtimeApp(App[None]):
                 bottom_pane = self.query_one("#bottom-pane", RichLog)
                 bottom_pane.write(msg)
         set_debug_callback(debug_to_ui)
+
+        # Redirect stdout to UI
+        sys.stdout = UIStdoutRedirector(self)
 
     @override
     def compose(self) -> ComposeResult:
