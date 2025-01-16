@@ -14,11 +14,11 @@ from pydub import AudioSegment
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 
 CHUNK_LENGTH_S = 0.05  # 100ms
-SAMPLE_RATE = 44100  # Match ReSpeaker's default sample rate
+SAMPLE_RATE = 48000  # Use 48kHz which is supported by all devices
 FORMAT = pyaudio.paInt16
 CHANNELS = 2  # ReSpeaker has 2 channels
 SOUNDCARD_WIDTH = 2
-INPUT_DEVICE_INDEX = 0  # Device index for ReSpeaker input (seeed-2mic-voicecard)
+INPUT_DEVICE_INDEX = 4  # Device index for ReSpeaker input (array device)
 OUTPUT_DEVICE_INDEX = 3  # Device index for output (dmixed)
 
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
