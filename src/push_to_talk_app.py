@@ -190,16 +190,17 @@ class RealtimeApp(App[None]):
             bottom_pane = self.query_one("#bottom-pane", RichLog)
             bottom_pane.write("[INFO] Connected to Realtime API\n")
 
-            # Configure voice settings
+            # Configure session settings
             await conn.session.update(session={
                 "modalities": ["text", "audio"],
                 "turn_detection": {"type": "server_vad"},
-                "speech": {
-                    "speed": 1.0,  # Normal speech speed
-                    "voice": "alloy"  # Use the Alloy voice
+                "output_audio": {
+                    "model": "tts-1",
+                    "voice": "alloy",
+                    "speed": 1.0
                 }
             })
-            bottom_pane.write("[INFO] Configured server VAD and speech settings\n")
+            bottom_pane.write("[INFO] Configured server VAD and audio settings\n")
 
             acc_items: dict[str, Any] = {}
 
