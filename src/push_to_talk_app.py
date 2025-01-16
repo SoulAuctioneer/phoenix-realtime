@@ -48,11 +48,10 @@ class AudioStatusIndicator(Static):
         return status
 
 
-class UIStdoutRedirector(TextIO):
+class UIStdoutRedirector:
     """A file-like object that redirects stdout to the UI."""
     def __init__(self, app: RealtimeApp):
         self.app = app
-        self.buffer = ""
 
     def write(self, text: str) -> int:
         if self.app.is_running:
@@ -69,6 +68,21 @@ class UIStdoutRedirector(TextIO):
 
     def flush(self) -> None:
         pass
+
+    def fileno(self) -> int:
+        return sys.__stdout__.fileno()
+
+    def isatty(self) -> bool:
+        return sys.__stdout__.isatty()
+
+    def readable(self) -> bool:
+        return False
+
+    def writable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return False
 
 
 class RealtimeApp(App[None]):
