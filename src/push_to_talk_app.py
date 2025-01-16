@@ -190,8 +190,16 @@ class RealtimeApp(App[None]):
             bottom_pane = self.query_one("#bottom-pane", RichLog)
             bottom_pane.write("[INFO] Connected to Realtime API\n")
 
-            await conn.session.update(session={"turn_detection": {"type": "server_vad"}})
-            bottom_pane.write("[INFO] Configured server VAD for turn detection\n")
+            # Configure voice settings
+            await conn.session.update(session={
+                "modalities": ["text", "audio"],
+                "turn_detection": {"type": "server_vad"},
+                "speech": {
+                    "speed": 1.0,  # Normal speech speed
+                    "voice": "alloy"  # Use the Alloy voice
+                }
+            })
+            bottom_pane.write("[INFO] Configured server VAD and speech settings\n")
 
             acc_items: dict[str, Any] = {}
 
@@ -322,6 +330,13 @@ class RealtimeApp(App[None]):
                     await conn.response.create()
                     bottom_pane.write("[INFO] Requested response from model\n")
             else:
+                # Only try to cancel if we have a connection
+                if self.connection:
+                    try:
+                        await self.connection.send({"type": "response.cancel"})
+                    except Exception as e:
+                        # Silently handle cancellation failures
+                        pass
                 self.should_send_audio.set()
                 status_indicator.is_recording = True
                 bottom_pane.write("[INFO] Started recording\n")
