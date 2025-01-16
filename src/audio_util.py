@@ -23,6 +23,40 @@ SOUNDCARD_INDEX = 1  # Device index for ReSpeaker
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
 
 
+def debug_audio_devices(target_index: int | None = None):
+    """Print detailed information about audio devices.
+    
+    Args:
+        target_index: If provided, prints extra details about this specific device index
+    """
+    try:
+        device_info = sd.query_devices()
+        print("\n=== Audio Device Information ===")
+        print("All devices:")
+        for idx, device in enumerate(device_info):
+            print(f"\nDevice {idx}: {device['name']}")
+            print(f"  Max Input Channels: {device['max_input_channels']}")
+            print(f"  Max Output Channels: {device['max_output_channels']}")
+            print(f"  Default Sample Rate: {device['default_samplerate']}")
+            
+        if target_index is not None:
+            try:
+                target_info = sd.query_devices(target_index)
+                print(f"\n=== Target Device (index {target_index}) Details ===")
+                print(f"Name: {target_info['name']}")
+                print(f"Max Input Channels: {target_info['max_input_channels']}")
+                print(f"Max Output Channels: {target_info['max_output_channels']}")
+                print(f"Default Sample Rate: {target_info['default_samplerate']}")
+                print(f"Host API: {target_info['hostapi']}")
+                print("Full device info:", target_info)
+            except Exception as e:
+                print(f"Error querying target device {target_index}: {e}")
+                
+    except Exception as e:
+        print(f"Error querying audio devices: {e}")
+    print("\n=== End Audio Device Information ===\n")
+
+
 def audio_to_pcm16_base64(audio_bytes: bytes) -> bytes:
     # load the audio file from the byte stream
     audio = AudioSegment.from_file(io.BytesIO(audio_bytes))

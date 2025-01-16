@@ -1,29 +1,21 @@
 import asyncio
-from openai import AsyncOpenAI
+from audio_util import debug_audio_devices
+from realtime_api_text_test import run_text_test
+from push_to_talk_app import RealtimeApp
 
 async def main():
-    client = AsyncOpenAI()
+    # First run audio device debug
+    print("\nRunning audio device debug...")
+    debug_audio_devices(target_index=1)  # Show details for ReSpeaker device
+    
+    # Then run text test
+    print("\nRunning text test...")
+    await run_text_test()
+    
+    # Finally run the push to talk app
+    print("\nStarting push to talk app...")
+    app = RealtimeApp()
+    app.run()
 
-    async with client.beta.realtime.connect(model="gpt-4o-realtime-preview-2024-10-01") as connection:
-        await connection.session.update(session={'modalities': ['text']})
-
-        await connection.conversation.item.create(
-            item={
-                "type": "message",
-                "role": "user",
-                "content": [{"type": "input_text", "text": "Say hello! Then tell me a joke."}],
-            }
-        )
-        await connection.response.create()
-
-        async for event in connection:
-            if event.type == 'response.text.delta':
-                print(event.delta, flush=True, end="")
-
-            elif event.type == 'response.text.done':
-                print()
-
-            elif event.type == "response.done":
-                break
-
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
