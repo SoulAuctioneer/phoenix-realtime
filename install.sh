@@ -10,6 +10,14 @@ python3 -m venv venv
 # Update package list
 sudo apt-get update
 
+# Check and install ffmpeg if needed
+if ! dpkg -l | grep -q ffmpeg; then
+    echo "Installing ffmpeg..."
+    sudo apt-get install -y ffmpeg
+else
+    echo "ffmpeg is already installed"
+fi
+
 # Check and install portaudio19-dev if needed
 if ! dpkg -l | grep -q portaudio19-dev; then
     echo "Installing portaudio19-dev..."
