@@ -16,7 +16,9 @@ from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 CHUNK_LENGTH_S = 0.05  # 100ms
 SAMPLE_RATE = 24000
 FORMAT = pyaudio.paInt16
-CHANNELS = 1
+CHANNELS = 2  # ReSpeaker uses 2 channels
+SOUNDCARD_WIDTH = 2 # Not used???
+SOUNDCARD_INDEX = 1  # Device index for ReSpeaker
 
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
 
@@ -36,6 +38,7 @@ class AudioPlayerAsync:
         self.lock = threading.Lock()
         self.stream = sd.OutputStream(
             callback=self.callback,
+            device=SOUNDCARD_INDEX,
             samplerate=SAMPLE_RATE,
             channels=CHANNELS,
             dtype=np.int16,
@@ -62,7 +65,7 @@ class AudioPlayerAsync:
             if len(data) < frames:
                 data = np.concatenate((data, np.zeros(frames - len(data), dtype=np.int16)))
 
-        outdata[:] = data.reshape(-1, 1)
+        outdata[:] = data.reshape(-1, CHANNELS)
 
     def reset_frame_count(self):
         self._frame_count = 0
@@ -105,6 +108,7 @@ async def send_audio_worker_sounddevice(
     read_size = int(SAMPLE_RATE * 0.02)
 
     stream = sd.InputStream(
+        device=SOUNDCARD_INDEX,
         channels=CHANNELS,
         samplerate=SAMPLE_RATE,
         dtype="int16",
