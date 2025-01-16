@@ -11,7 +11,8 @@ from typing_extensions import override
 
 from textual import events
 from audio_util import (
-    CHANNELS, SAMPLE_RATE, INPUT_DEVICE_INDEX, AudioPlayerAsync
+    CHANNELS, SAMPLE_RATE, INPUT_DEVICE_INDEX, AudioPlayerAsync,
+    set_debug_callback
 )
 from textual.app import App, ComposeResult
 from textual.widgets import Button, Static, RichLog
@@ -121,6 +122,13 @@ class RealtimeApp(App[None]):
         self.last_audio_item_id = None
         self.should_send_audio = asyncio.Event()
         self.connected = asyncio.Event()
+        
+        # Set up debug callback
+        def debug_to_ui(msg: str):
+            if self.is_running:
+                bottom_pane = self.query_one("#bottom-pane", RichLog)
+                bottom_pane.write(msg)
+        set_debug_callback(debug_to_ui)
 
     @override
     def compose(self) -> ComposeResult:
@@ -151,16 +159,22 @@ class RealtimeApp(App[None]):
                     session_display = self.query_one(SessionDisplay)
                     assert event.session.id is not None
                     session_display.session_id = event.session.id
+                    bottom_pane = self.query_one("#bottom-pane", RichLog)
+                    bottom_pane.write(f"[DEBUG] Session created: {event.session.id}\n")
                     continue
 
                 if event.type == "session.updated":
                     self.session = event.session
+                    bottom_pane = self.query_one("#bottom-pane", RichLog)
+                    bottom_pane.write(f"[DEBUG] Session updated: {event.session}\n")
                     continue
 
                 if event.type == "response.audio.delta":
                     if event.item_id != self.last_audio_item_id:
                         self.audio_player.reset_frame_count()
                         self.last_audio_item_id = event.item_id
+                        bottom_pane = self.query_one("#bottom-pane", RichLog)
+                        bottom_pane.write(f"[DEBUG] New audio response started: {event.item_id}\n")
 
                     bytes_data = base64.b64decode(event.delta)
                     self.audio_player.add_data(bytes_data)
@@ -177,8 +191,12 @@ class RealtimeApp(App[None]):
                     # Clear and update the entire content because RichLog otherwise treats each delta as a new line
                     bottom_pane = self.query_one("#bottom-pane", RichLog)
                     bottom_pane.clear()
-                    bottom_pane.write(acc_items[event.item_id])
+                    bottom_pane.write(f"[DEBUG] Transcript: {acc_items[event.item_id]}\n")
                     continue
+
+                # Debug any other events
+                bottom_pane = self.query_one("#bottom-pane", RichLog)
+                bottom_pane.write(f"[DEBUG] Other event: {event.type}\n")
 
     async def _get_connection(self) -> AsyncRealtimeConnection:
         await self.connected.wait()

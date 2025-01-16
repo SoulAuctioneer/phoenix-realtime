@@ -13,6 +13,18 @@ from pydub import AudioSegment
 
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 
+# Global debug callback
+debug_callback: Callable[[str], None] | None = None
+
+def set_debug_callback(callback: Callable[[str], None]):
+    global debug_callback
+    debug_callback = callback
+
+def debug_print(msg: str):
+    if debug_callback:
+        debug_callback(f"[DEBUG] {msg}\n")
+    print(msg)  # Keep stdout printing for non-UI contexts
+
 CHUNK_LENGTH_S = 0.05  # 100ms
 SAMPLE_RATE = 48000  # Use 48kHz which is supported by all devices
 FORMAT = pyaudio.paInt16
@@ -147,7 +159,7 @@ async def send_audio_worker_sounddevice(
     sent_audio = False
 
     device_info = sd.query_devices()
-    print(device_info)
+    debug_print(str(device_info))
 
     read_size = int(SAMPLE_RATE * 0.02)
 
@@ -170,15 +182,18 @@ async def send_audio_worker_sounddevice(
             if should_send() if should_send else True:
                 if not sent_audio and start_send:
                     await start_send()
+                debug_print("Sending audio buffer")
                 await connection.send(
                     {"type": "input_audio_buffer.append", "audio": base64.b64encode(data).decode("utf-8")}
                 )
                 sent_audio = True
 
             elif sent_audio:
-                print("Done, triggering inference")
+                debug_print("Done recording, triggering inference")
                 await connection.send({"type": "input_audio_buffer.commit"})
+                debug_print("Committed audio buffer")
                 await connection.send({"type": "response.create", "response": {}})
+                debug_print("Created response")
                 sent_audio = False
 
             await asyncio.sleep(0)
