@@ -16,6 +16,10 @@ def main():
     # Run the async tests first
     asyncio.run(run_initial_tests())
     
+    # Create and set a new event loop for the Textual app
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
     # Then run the push to talk app separately
     print("\nStarting push to talk app...")
     app = RealtimeApp()
