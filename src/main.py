@@ -6,21 +6,21 @@ from push_to_talk_app import RealtimeApp
 async def run_initial_tests():
     # First run audio device debug
     print("\nRunning audio device debug...")
-    debug_audio_devices(target_index=1)  # Show details for ReSpeaker device
+    debug_audio_devices(target_index=0)  # Show details for ReSpeaker device (seeed-2mic-voicecard)
     
     # Then run text test
-    print("\nRunning text test...")
-    await run_text_test()
+    # print("\nRunning text test...")
+    # await run_text_test()
 
 def main():
-    # Run the async tests first
+    # Optionally Run the async tests first
     asyncio.run(run_initial_tests())
     
     # Create and set a new event loop for the Textual app
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
-    # Then run the push to talk app separately
+    # Then run the push to talk app
     print("\nStarting push to talk app...")
     app = RealtimeApp()
     app.run()

@@ -14,7 +14,7 @@ from pydub import AudioSegment
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 
 CHUNK_LENGTH_S = 0.05  # 100ms
-SAMPLE_RATE = 24000
+SAMPLE_RATE = 44100  # Match ReSpeaker's default sample rate
 FORMAT = pyaudio.paInt16
 CHANNELS = 2  # ReSpeaker has 2 channels
 SOUNDCARD_WIDTH = 2
