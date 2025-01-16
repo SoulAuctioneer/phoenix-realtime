@@ -1,4 +1,10 @@
-# Create a virtual environment
+# Remove existing virtual environment if it exists
+if [ -d "venv" ]; then
+    echo "Removing existing virtual environment..."
+    rm -rf venv
+fi
+
+echo "Creating virtual environment..."
 python3 -m venv venv
 
 # Update package list
