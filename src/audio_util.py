@@ -58,6 +58,7 @@ def debug_audio_devices(target_index: int | None = None):
     print("\n=== End Audio Device Information ===\n")
 
 
+# NOTE: Unused, what's it for?
 def audio_to_pcm16_base64(audio_bytes: bytes) -> bytes:
     # load the audio file from the byte stream
     audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
@@ -151,7 +152,7 @@ async def send_audio_worker_sounddevice(
     read_size = int(SAMPLE_RATE * 0.02)
 
     stream = sd.InputStream(
-        device=SOUNDCARD_INDEX,
+        device=INPUT_DEVICE_INDEX,
         channels=CHANNELS,
         samplerate=SAMPLE_RATE,
         dtype="int16",
