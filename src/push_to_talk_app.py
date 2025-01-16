@@ -198,7 +198,7 @@ class RealtimeApp(App[None]):
                 "turn_detection": {"type": "server_vad"},
                 "modalities": ["text", "audio"],
                 "voice": "ballad",
-                "input_audio_transcription": ["model", "whisper-1"],
+                "input_audio_transcription": {"model": "whisper-1"},
                 "instructions": "You are a friendly assistant."
             })
             bottom_pane.write("[INFO] Updated session settings\n")
