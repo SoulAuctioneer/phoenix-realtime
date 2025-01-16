@@ -184,23 +184,22 @@ class RealtimeApp(App[None]):
         self.run_worker(self.send_mic_audio())
 
     async def handle_realtime_connection(self) -> None:
-        async with self.client.beta.realtime.connect(model="gpt-4o-realtime-preview-2024-10-01") as conn:
+        async with self.client.beta.realtime.connect(
+            model="gpt-4o-realtime-preview-2024-10-01",
+            voice="alloy",
+            speed=1.0
+        ) as conn:
             self.connection = conn
             self.connected.set()
             bottom_pane = self.query_one("#bottom-pane", RichLog)
             bottom_pane.write("[INFO] Connected to Realtime API\n")
 
-            # Configure session settings
+            # Configure session with both modalities and turn detection
             await conn.session.update(session={
                 "modalities": ["text", "audio"],
-                "turn_detection": {"type": "server_vad"},
-                "output_audio": {
-                    "model": "tts-1",
-                    "voice": "alloy",
-                    "speed": 1.0
-                }
+                "turn_detection": {"type": "server_vad"}
             })
-            bottom_pane.write("[INFO] Configured server VAD and audio settings\n")
+            bottom_pane.write("[INFO] Configured modalities and server VAD\n")
 
             acc_items: dict[str, Any] = {}
 
