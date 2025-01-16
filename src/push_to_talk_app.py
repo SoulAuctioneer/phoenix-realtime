@@ -198,13 +198,10 @@ class RealtimeApp(App[None]):
                 "turn_detection": {"type": "server_vad"},
                 "modalities": ["text", "audio"],
                 "voice": "ballad",
-                "speed": 1.0,
                 "input_audio_transcription": ["model", "whisper-1"],
                 "instructions": "You are a friendly assistant."
             })
-            bottom_pane.write("[INFO] Configured server VAD for turn detection\n")
-
-            bottom_pane.write("[INFO] Configured modalities and server VAD\n")
+            bottom_pane.write("[INFO] Updated session settings\n")
 
             acc_items: dict[str, Any] = {}
 
