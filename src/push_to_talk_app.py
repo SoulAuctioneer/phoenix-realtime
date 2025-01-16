@@ -186,12 +186,6 @@ class RealtimeApp(App[None]):
     async def handle_realtime_connection(self) -> None:
         async with self.client.beta.realtime.connect(
             model="gpt-4o-realtime-preview-2024-10-01",
-            # modalities=["text", "audio"],
-            # voice="ballad",
-            # speed=1.0,
-            # input_audio_transcription=["model", "whisper-1"],
-            instructions="You are a friendly assistant.",
-            # turn_detection={"type": "server_vad"}
         ) as conn:
             self.connection = conn
             self.connected.set()
@@ -200,7 +194,14 @@ class RealtimeApp(App[None]):
 
             # NOTE: This is th default, and can be omitted.
             # if you want to manually handle VAD yourself, then set `'turn_detection': None`
-            await conn.session.update(session={"turn_detection": {"type": "server_vad"}})
+            await conn.session.update(session={
+                "turn_detection": {"type": "server_vad"},
+                "modalities": ["text", "audio"],
+                "voice": "ballad",
+                "speed": 1.0,
+                "input_audio_transcription": ["model", "whisper-1"],
+                "instructions": "You are a friendly assistant."
+            })
             bottom_pane.write("[INFO] Configured server VAD for turn detection\n")
 
             bottom_pane.write("[INFO] Configured modalities and server VAD\n")
