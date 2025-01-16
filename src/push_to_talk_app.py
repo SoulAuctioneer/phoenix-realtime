@@ -146,10 +146,11 @@ class RealtimeApp(App[None]):
         async with self.client.beta.realtime.connect(model="gpt-4o-realtime-preview-2024-10-01") as conn:
             self.connection = conn
             self.connected.set()
+            bottom_pane = self.query_one("#bottom-pane", RichLog)
+            bottom_pane.write("[INFO] Connected to Realtime API\n")
 
-            # note: this is the default and can be omitted
-            # if you want to manually handle VAD yourself, then set `'turn_detection': None`
             await conn.session.update(session={"turn_detection": {"type": "server_vad"}})
+            bottom_pane.write("[INFO] Configured server VAD for turn detection\n")
 
             acc_items: dict[str, Any] = {}
 
@@ -161,6 +162,7 @@ class RealtimeApp(App[None]):
                     session_display.session_id = event.session.id
                     bottom_pane = self.query_one("#bottom-pane", RichLog)
                     bottom_pane.write(f"[DEBUG] Session created: {event.session.id}\n")
+                    bottom_pane.write("[INFO] Ready to record. Press K to start.\n")
                     continue
 
                 if event.type == "session.updated":
@@ -258,11 +260,10 @@ class RealtimeApp(App[None]):
 
     async def on_key(self, event: events.Key) -> None:
         """Handle key press events."""
-        if event.key == "enter":
-            self.query_one(Button).press()
-            return
-
+        bottom_pane = self.query_one("#bottom-pane", RichLog)
+        
         if event.key == "q":
+            bottom_pane.write("[INFO] Exiting application...\n")
             self.exit()
             return
 
@@ -271,19 +272,18 @@ class RealtimeApp(App[None]):
             if status_indicator.is_recording:
                 self.should_send_audio.clear()
                 status_indicator.is_recording = False
+                bottom_pane.write("[INFO] Stopped recording\n")
 
                 if self.session and self.session.turn_detection is None:
-                    # The default in the API is that the model will automatically detect when the user has
-                    # stopped talking and then start responding itself.
-                    #
-                    # However if we're in manual `turn_detection` mode then we need to
-                    # manually tell the model to commit the audio buffer and start responding.
                     conn = await self._get_connection()
                     await conn.input_audio_buffer.commit()
+                    bottom_pane.write("[INFO] Committed audio buffer\n")
                     await conn.response.create()
+                    bottom_pane.write("[INFO] Requested response from model\n")
             else:
                 self.should_send_audio.set()
                 status_indicator.is_recording = True
+                bottom_pane.write("[INFO] Started recording\n")
 
 
 if __name__ == "__main__":
