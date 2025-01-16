@@ -13,5 +13,5 @@ Based on OpenAI's realtime API Python example: https://github.com/openai/openai-
 5. Install respeaker driver (note this is for the version 1 HAT): https://github.com/respeaker/seeed-voicecard
 6. Install this repo: `git clone https://github.com/SoulAuctioneer/phoenix-realtime.git`
 7. Run install.sh
-8. Run `source venv/bin/activate`
-9. Run `python3 src/main.py`
+8. Add your OpenAI API key to local.env file
+9. Run `./run.sh`

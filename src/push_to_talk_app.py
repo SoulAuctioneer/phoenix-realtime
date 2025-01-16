@@ -194,6 +194,14 @@ class RealtimeApp(App[None]):
                     bottom_pane.write(f"[DEBUG] Transcript: {acc_items[event.item_id]}\n")
                     continue
 
+                # Handle error events with more detail
+                if event.type == "error":
+                    bottom_pane = self.query_one("#bottom-pane", RichLog)
+                    bottom_pane.write(f"[ERROR] {event.error.code}: {event.error.message}\n")
+                    if hasattr(event.error, 'details'):
+                        bottom_pane.write(f"[ERROR] Details: {event.error.details}\n")
+                    continue
+
                 # Debug any other events
                 bottom_pane = self.query_one("#bottom-pane", RichLog)
                 bottom_pane.write(f"[DEBUG] Other event: {event.type}\n")
