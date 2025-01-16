@@ -16,7 +16,7 @@ from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 CHUNK_LENGTH_S = 0.05  # 100ms
 SAMPLE_RATE = 24000
 FORMAT = pyaudio.paInt16
-CHANNELS = 2  # ReSpeaker uses 2 channels
+CHANNELS = 1  # Note ReSpeaker could use 2 channels
 SOUNDCARD_WIDTH = 2 # Not used???
 SOUNDCARD_INDEX = 1  # Device index for ReSpeaker
 
