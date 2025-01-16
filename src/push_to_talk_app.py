@@ -186,19 +186,22 @@ class RealtimeApp(App[None]):
     async def handle_realtime_connection(self) -> None:
         async with self.client.beta.realtime.connect(
             model="gpt-4o-realtime-preview-2024-10-01",
-            voice="alloy",
-            speed=1.0
+            modalities=["text", "audio"],
+            voice="ballad",
+            speed=1.0,
+            input_audio_transcription=["model", "whisper-1"],
+            instructions="You are a friendly assistant.",
+            turn_detection={"type": "server_vad"}
         ) as conn:
             self.connection = conn
             self.connected.set()
             bottom_pane = self.query_one("#bottom-pane", RichLog)
             bottom_pane.write("[INFO] Connected to Realtime API\n")
 
-            # Configure session with both modalities and turn detection
-            await conn.session.update(session={
-                "modalities": ["text", "audio"],
-                "turn_detection": {"type": "server_vad"}
-            })
+            # # Configure session with both modalities and turn detection
+            # await conn.session.update(session={
+            #     "turn_detection": {"type": "server_vad"}
+            # })
             bottom_pane.write("[INFO] Configured modalities and server VAD\n")
 
             acc_items: dict[str, Any] = {}
