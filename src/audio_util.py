@@ -77,6 +77,8 @@ class AudioPlayerAsync:
             channels=CHANNELS,
             dtype=np.int16,
             blocksize=int(CHUNK_LENGTH_S * SAMPLE_RATE),
+            latency='low',  # Use low latency mode
+            extra_settings=None  # Let ALSA choose the best settings
         )
         self.playing = False
         self._frame_count = 0
@@ -99,7 +101,14 @@ class AudioPlayerAsync:
             if len(data) < frames:
                 data = np.concatenate((data, np.zeros(frames - len(data), dtype=np.int16)))
 
-        outdata[:] = data.reshape(-1, CHANNELS)
+            # Ensure the output data has the correct shape for stereo
+            if CHANNELS == 2:
+                # Duplicate mono data to both channels if input is mono
+                if len(data.shape) == 1:
+                    data = np.column_stack((data, data))
+                outdata[:] = data
+            else:
+                outdata[:] = data.reshape(-1, CHANNELS)
 
     def reset_frame_count(self):
         self._frame_count = 0
