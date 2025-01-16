@@ -187,11 +187,11 @@ class RealtimeApp(App[None]):
         async with self.client.beta.realtime.connect(
             model="gpt-4o-realtime-preview-2024-10-01",
             # modalities=["text", "audio"],
-            voice="ballad",
-            speed=1.0,
-            input_audio_transcription=["model", "whisper-1"],
+            # voice="ballad",
+            # speed=1.0,
+            # input_audio_transcription=["model", "whisper-1"],
             instructions="You are a friendly assistant.",
-            turn_detection={"type": "server_vad"}
+            # turn_detection={"type": "server_vad"}
         ) as conn:
             self.connection = conn
             self.connected.set()
