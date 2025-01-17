@@ -1,46 +1,49 @@
+#!/bin/bash
+
+# Exit on error
+set -e
+
 # Remove existing virtual environment if it exists
 if [ -d "venv" ]; then
     echo "Removing existing virtual environment..."
     rm -rf venv
 fi
 
-echo "Creating virtual environment..."
+# Create virtual environment
+echo "Creating Python virtual environment..."
 python3 -m venv venv
 
-# Update package list
-sudo apt-get update
+# Activate the virtual environment
+source venv/bin/activate
 
-# Check and install ffmpeg if needed
-if ! dpkg -l | grep -q ffmpeg; then
-    echo "Installing ffmpeg..."
-    sudo apt-get install -y ffmpeg
-else
-    echo "ffmpeg is already installed"
+# Install or upgrade pip
+python3 -m pip install --upgrade pip
+
+# Install system dependencies based on OS
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS specific installations
+    if ! brew list portaudio &>/dev/null; then
+        echo "Installing portaudio via Homebrew..."
+        brew install portaudio
+    fi
+elif [[ "$OSTYPE" == "linux"* ]]; then
+    # Linux specific installations
+    sudo apt-get update
+    
+    # Install required system packages
+    packages=(ffmpeg portaudio19-dev libatlas-base-dev libopenblas0)
+    for package in "${packages[@]}"; do
+        if ! dpkg -l | grep -q $package; then
+            echo "Installing $package..."
+            sudo apt-get install -y $package
+        else
+            echo "$package is already installed"
+        fi
+    done
 fi
 
-# Check and install portaudio19-dev if needed
-if ! dpkg -l | grep -q portaudio19-dev; then
-    echo "Installing portaudio19-dev..."
-    sudo apt-get install -y portaudio19-dev
-else
-    echo "portaudio19-dev is already installed"
-fi
+# Install Python dependencies
+echo "Installing Python dependencies..."
+pip install -r requirements.txt
 
-# Check and install libatlas-base-dev if needed
-if ! dpkg -l | grep -q libatlas-base-dev; then
-    echo "Installing libatlas-base-dev..."
-    sudo apt-get install -y libatlas-base-dev
-else
-    echo "libatlas-base-dev is already installed"
-fi
-
-# Check and install libopenblas0 if needed
-if ! dpkg -l | grep -q libopenblas0; then
-    echo "Installing libopenblas0..."
-    sudo apt-get install -y libopenblas0
-else
-    echo "libopenblas0 is already installed"
-fi
-
-# Install the required packages
-./venv/bin/pip install -r requirements.txt
+echo "Installation complete!"

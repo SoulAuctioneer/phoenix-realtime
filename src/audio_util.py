@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import io
+import os
+import sys
 import base64
 import asyncio
 import threading
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, Optional, Tuple
 
 import numpy as np
 import pyaudio
@@ -12,6 +14,114 @@ import sounddevice as sd
 from pydub import AudioSegment
 
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
+
+# Audio configuration with environment variable overrides and defaults
+CHUNK_LENGTH_S = float(os.getenv('AUDIO_CHUNK_LENGTH_S', '0.05'))
+SAMPLE_RATE = int(os.getenv('AUDIO_SAMPLE_RATE', '48000'))
+CHANNELS = int(os.getenv('AUDIO_CHANNELS', '2'))
+SOUNDCARD_WIDTH = int(os.getenv('AUDIO_WIDTH', '2'))
+
+def find_default_devices() -> Tuple[Optional[int], Optional[int]]:
+    """Find system default input and output devices"""
+    try:
+        devices = sd.query_devices()
+        default_input = sd.default.device[0]
+        default_output = sd.default.device[1]
+        
+        # Validate default devices exist and are capable
+        if default_input is not None and default_input < len(devices):
+            if devices[default_input]['max_input_channels'] == 0:
+                default_input = None
+        if default_output is not None and default_output < len(devices):
+            if devices[default_output]['max_output_channels'] == 0:
+                default_output = None
+                
+        return default_input, default_output
+    except Exception as e:
+        debug_print(f"Error finding default devices: {e}")
+        return None, None
+
+def find_respeaker_device() -> Tuple[Optional[int], Optional[int]]:
+    """Find ReSpeaker input and output device indices.
+    Returns tuple of (input_index, output_index)"""
+    devices = sd.query_devices()
+    input_idx = None
+    output_idx = None
+    
+    # Common ReSpeaker and USB audio keywords
+    keywords = ['seeed', 'respeaker', 'usb audio', 'array device']
+    
+    for idx, device in enumerate(devices):
+        name = device['name'].lower()
+        if any(keyword in name for keyword in keywords):
+            if device['max_input_channels'] > 0:
+                input_idx = idx
+            if device['max_output_channels'] > 0:
+                output_idx = idx
+                
+    return input_idx, output_idx
+
+# First try to get devices from environment variables
+input_idx = os.getenv('AUDIO_INPUT_DEVICE')
+output_idx = os.getenv('AUDIO_OUTPUT_DEVICE')
+
+# If not set in env, try to find ReSpeaker
+if input_idx is None or output_idx is None:
+    input_idx, output_idx = find_respeaker_device()
+    
+    # If no ReSpeaker found, use system defaults
+    if input_idx is None or output_idx is None:
+        default_input, default_output = find_default_devices()
+        if input_idx is None:
+            input_idx = default_input
+        if output_idx is None:
+            output_idx = default_output
+
+# Convert to int, fallback to 0 if still None
+INPUT_DEVICE_INDEX = int(input_idx if input_idx is not None else 0)
+OUTPUT_DEVICE_INDEX = int(output_idx if output_idx is not None else 0)
+
+def get_device_info() -> str:
+    """Get formatted string of current device configuration"""
+    try:
+        devices = sd.query_devices()
+        input_name = devices[INPUT_DEVICE_INDEX]['name'] if INPUT_DEVICE_INDEX < len(devices) else "Unknown"
+        output_name = devices[OUTPUT_DEVICE_INDEX]['name'] if OUTPUT_DEVICE_INDEX < len(devices) else "Unknown"
+        
+        return f"""Current audio configuration:
+Input Device ({INPUT_DEVICE_INDEX}): {input_name}
+Output Device ({OUTPUT_DEVICE_INDEX}): {output_name}
+Sample Rate: {SAMPLE_RATE}Hz
+Channels: {CHANNELS}
+"""
+    except Exception as e:
+        return f"Error getting device info: {e}"
+
+def validate_audio_config() -> bool:
+    """Validate the current audio configuration"""
+    try:
+        devices = sd.query_devices()
+        if INPUT_DEVICE_INDEX >= len(devices):
+            debug_print(f"Invalid input device index {INPUT_DEVICE_INDEX}")
+            return False
+        if OUTPUT_DEVICE_INDEX >= len(devices):
+            debug_print(f"Invalid output device index {OUTPUT_DEVICE_INDEX}")
+            return False
+            
+        input_device = devices[INPUT_DEVICE_INDEX]
+        if input_device['max_input_channels'] < CHANNELS:
+            debug_print(f"Input device does not support {CHANNELS} channels")
+            return False
+            
+        output_device = devices[OUTPUT_DEVICE_INDEX]
+        if output_device['max_output_channels'] < CHANNELS:
+            debug_print(f"Output device does not support {CHANNELS} channels")
+            return False
+            
+        return True
+    except Exception as e:
+        debug_print(f"Error validating audio config: {e}")
+        return False
 
 # Global debug callback
 debug_callback: Callable[[str], None] | None = None
@@ -26,16 +136,6 @@ def debug_print(msg: str):
     else:
         # Only print to stdout if no callback is set
         print(msg)
-
-CHUNK_LENGTH_S = 0.05  # 100ms
-SAMPLE_RATE = 48000  # Use 48kHz which is supported by all devices
-FORMAT = pyaudio.paInt16
-CHANNELS = 2  # ReSpeaker has 2 channels
-SOUNDCARD_WIDTH = 2
-INPUT_DEVICE_INDEX = 4  # Device index for ReSpeaker input (array device)
-OUTPUT_DEVICE_INDEX = 3  # Device index for output (dmixed)
-
-# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
 
 
 def debug_audio_devices(target_index: int | None = None):
@@ -84,15 +184,16 @@ def audio_to_pcm16_base64(audio_bytes: bytes) -> bytes:
 
 class AudioPlayerAsync:
     def __init__(self):
+        self.sample_rate = 24000  # Store sample rate as instance variable
         self.queue = []
         self.lock = threading.Lock()
         self.stream = sd.OutputStream(
             callback=self.callback,
             device=OUTPUT_DEVICE_INDEX,
-            samplerate=48000,  # dmixed device uses 48000Hz
+            samplerate=self.sample_rate,
             channels=2,  # dmixed device has 2 output channels
             dtype=np.int16,
-            blocksize=int(CHUNK_LENGTH_S * 48000),  # adjust blocksize for new sample rate
+            blocksize=int(CHUNK_LENGTH_S * self.sample_rate),  # use instance variable
             latency='low'  # Use low latency mode
         )
         self.playing = False

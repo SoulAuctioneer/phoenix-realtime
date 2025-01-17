@@ -1,12 +1,16 @@
+#!/bin/bash
+
+# Exit on error
+set -e
+
+# Activate the virtual environment
+source venv/bin/activate
+
 # Load environment variables from .env file
 set -a
-source local.env
+source local.env 2>/dev/null || true  # Don't fail if file doesn't exist
 set +a
 
-# Activate the virtual environment only if not already active
-if [ -z "$VIRTUAL_ENV" ]; then
-    source venv/bin/activate
-fi
-
 # Run the main.py file
+echo "Starting application..."
 python3 src/main.py
