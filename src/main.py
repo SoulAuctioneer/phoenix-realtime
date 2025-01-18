@@ -24,7 +24,7 @@ async def run_initial_tests():
 
 async def main():
     # Run the async tests first
-    await run_initial_tests()
+    # await run_initial_tests()
     
     # Then run the push to talk app
     print("\nStarting push to talk app...")
