@@ -8,7 +8,7 @@ import threading
 from typing import Callable, Awaitable, Optional, Tuple
 
 import numpy as np
-import pyaudio
+# import pyaudio
 import sounddevice as sd
 from pydub import AudioSegment
 
@@ -188,7 +188,7 @@ class AudioPlayerAsync:
         print(f"Initializing audio player with device {OUTPUT_DEVICE_INDEX} and sample rate {self.sample_rate}")
         self.stream = sd.OutputStream(
             callback=self.callback,
-            device=OUTPUT_DEVICE_INDEX,
+            device=0,
             samplerate=self.sample_rate,
             channels=AUDIO_CHANNELS,
             dtype=np.int16,
@@ -287,7 +287,7 @@ async def send_audio_worker_sounddevice(
     read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
 
     stream = sd.InputStream(
-        device=INPUT_DEVICE_INDEX,
+        device=0,
         channels=AUDIO_CHANNELS,
         samplerate=AUDIO_INPUT_SAMPLE_RATE,
         dtype="int16",

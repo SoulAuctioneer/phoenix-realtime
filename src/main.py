@@ -12,8 +12,7 @@ async def run_initial_tests():
     # Then validate audio configuration
     print("\nValidating audio configuration...")
     if not validate_audio_config():
-        print("ERROR: Invalid audio configuration. Please check your settings in local.env")
-        print("You can copy local.env.template to local.env and adjust the settings.")
+        print("ERROR: Invalid audio configuration. Please check your settings in config.py")
         print("\nAvailable devices:")
         debug_audio_devices()  # Show all devices to help user configure
         exit(1)
