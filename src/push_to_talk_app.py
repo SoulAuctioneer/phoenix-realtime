@@ -19,7 +19,7 @@ from openai import AsyncOpenAI
 from openai.types.beta.realtime.session import Session
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 from config import (
-    OPENAI_API_KEY, OPENAI_MODEL, OPENAI_VOICE, OPENAI_MODALITIES,
+    AUDIO_INPUT_DEVICE, OPENAI_API_KEY, OPENAI_MODEL, OPENAI_VOICE, OPENAI_MODALITIES,
     OPENAI_INSTRUCTIONS, OPENAI_TRANSCRIPTION_MODEL, OPENAI_TURN_DETECTION,
     ALLOW_RECORDING_DURING_PLAYBACK
 )
@@ -209,7 +209,7 @@ class RealtimeApp:
         self.log(str(device_info))
         read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
         stream = sd.InputStream(
-            # device=INPUT_DEVICE_INDEX,
+            device=AUDIO_INPUT_DEVICE,
             channels=AUDIO_CHANNELS,
             samplerate=AUDIO_INPUT_SAMPLE_RATE,
             dtype="int16",
