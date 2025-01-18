@@ -157,6 +157,27 @@ class RealtimeApp:
         bytes_data = base64.b64decode(event.delta)
         self.audio_player.add_data(bytes_data)
 
+    async def _cancel_response(self) -> None:
+        """Helper method to safely cancel an active response"""
+        if self.connection and self.is_response_active.is_set():
+            try:
+                await self.connection.send({"type": "response.cancel"})
+            except:
+                pass
+            self.is_response_active.clear()
+
+    async def _cancel_audio_playback(self) -> None:
+        """Helper method to safely cancel audio playback"""
+        if self.is_playing_audio.is_set():
+            self.audio_player.stop()
+            self.is_playing_audio.clear()
+
+    async def cancel_response_and_playback(self) -> None:
+        """Cancel any ongoing audio playback and response"""
+        self.log("Cancelling audio playback and response")
+        await self._cancel_response()
+        await self._cancel_audio_playback()
+
     async def _handle_speech_started(self, event: Any) -> None:
         """Handle input_audio_buffer.speech_started events."""
         if not ALLOW_RECORDING_DURING_PLAYBACK:
@@ -164,10 +185,7 @@ class RealtimeApp:
 
         if self.is_response_active.is_set() or self.is_playing_audio.is_set():
             self.log("Speech detected during active response, cancelling response")
-            if self.is_response_active.is_set():
-                asyncio.create_task(self.connection.send({"type": "response.cancel"}))
-            if self.is_playing_audio.is_set():
-                self.audio_player.stop()
+            await self.cancel_response_and_playback()
 
     async def _process_events(self) -> None:
         """Process events from the realtime connection."""
@@ -248,19 +266,6 @@ class RealtimeApp:
                     self.log("Audio playback complete")
             await asyncio.sleep(0.05)
 
-    async def cancel_audio(self) -> None:
-        """Cancel any ongoing audio playback and response"""
-        if self.is_playing_audio.is_set() or self.is_response_active.is_set():
-            self.log("Cancelling audio playback and response")
-            if self.is_response_active.is_set():
-                try:
-                    await self.connection.send({"type": "response.cancel"})
-                except:
-                    pass
-            if self.is_playing_audio.is_set():
-                self.audio_player.stop()
-                self.is_playing_audio.clear()
-
     async def handle_input(self) -> None:
         """Handle keyboard input in a separate task"""
         
@@ -274,7 +279,7 @@ class RealtimeApp:
                 elif key.lower() == 'k':
                     await self.toggle_recording()
                 elif key.lower() == 'c':
-                    await self.cancel_audio()
+                    await self.cancel_response_and_playback()
 
             except Exception as e:
                 self.log_error(f"Input handling error: {e}")
@@ -287,12 +292,8 @@ class RealtimeApp:
             await self.start_recording()
 
     async def start_recording(self) -> None:
-        # Cancel any ongoing response if we have a connection and an ongoing response
-        if self.connection and self.is_response_active.is_set():
-            try:
-                await self.connection.send({"type": "response.cancel"})
-            except Exception as e:
-                pass
+        # Cancel any ongoing response and audio
+        await self.cancel_response_and_playback()
 
         # Ensure any existing stream is properly closed
         if hasattr(self, 'stream'):
@@ -335,14 +336,12 @@ class RealtimeApp:
         self.log("Exiting application...")
         self.is_running = False
         self.is_recording.clear()
+        await self.cancel_response_and_playback()
         if self.connection:
             try:
-                await self.connection.send({"type": "response.cancel"})
                 await self.connection.close()
             except:
                 pass
-        # Stop audio playback
-        self.audio_player.stop()
         return
 
     async def run(self) -> None:
