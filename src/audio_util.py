@@ -59,24 +59,24 @@ def find_respeaker_device() -> Tuple[Optional[int], Optional[int]]:
     return input_idx, output_idx
 
 # First try to get devices from config
-input_idx = AUDIO_INPUT_DEVICE
-output_idx = AUDIO_OUTPUT_DEVICE
+input_device = AUDIO_INPUT_DEVICE
+output_device = AUDIO_OUTPUT_DEVICE
 
 # If not set in config, try to find ReSpeaker
-if input_idx is None or output_idx is None:
-    input_idx, output_idx = find_respeaker_device()
+if input_device is None or output_device is None:
+    input_device, output_device = find_respeaker_device()
     
     # If no ReSpeaker found, use system defaults
-    if input_idx is None or output_idx is None:
+    if input_device is None or output_device is None:
         default_input, default_output = find_default_devices()
-        if input_idx is None:
-            input_idx = default_input
-        if output_idx is None:
-            output_idx = default_output
+        if input_device is None:
+            input_device = default_input
+        if output_device is None:
+            output_device = default_output
 
-# Convert to int, fallback to 0 if still None
-INPUT_DEVICE_INDEX = int(input_idx if input_idx is not None else 0)
-OUTPUT_DEVICE_INDEX = int(output_idx if output_idx is not None else 0)
+# Use device indices, fallback to 0 if not found
+INPUT_DEVICE_INDEX = 0 if input_device is None else input_device
+OUTPUT_DEVICE_INDEX = 0 if output_device is None else output_device
 
 def get_device_info() -> str:
     """Get formatted string of current device configuration"""
@@ -188,7 +188,7 @@ class AudioPlayerAsync:
         print(f"Initializing audio player with device {OUTPUT_DEVICE_INDEX} and sample rate {self.sample_rate}")
         self.stream = sd.OutputStream(
             callback=self.callback,
-            device=0,
+            # device=OUTPUT_DEVICE_INDEX,
             samplerate=self.sample_rate,
             channels=AUDIO_CHANNELS,
             dtype=np.int16,
@@ -287,7 +287,7 @@ async def send_audio_worker_sounddevice(
     read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
 
     stream = sd.InputStream(
-        device=0,
+        #device=INPUT_DEVICE_INDEX,
         channels=AUDIO_CHANNELS,
         samplerate=AUDIO_INPUT_SAMPLE_RATE,
         dtype="int16",

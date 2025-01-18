@@ -208,7 +208,7 @@ class RealtimeApp:
         self.log(str(device_info))
         read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
         stream = sd.InputStream(
-            device=0,
+            # device=INPUT_DEVICE_INDEX,
             channels=AUDIO_CHANNELS,
             samplerate=AUDIO_INPUT_SAMPLE_RATE,
             dtype="int16",
