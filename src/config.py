@@ -5,8 +5,8 @@ AUDIO_INPUT_DEVICE = None  # Will be auto-detected
 AUDIO_OUTPUT_DEVICE = None  # Will be auto-detected
 AUDIO_CHUNK_LENGTH_S = 0.05
 # Split sample rate into input and output configurations
-AUDIO_INPUT_SAMPLE_RATE = 24000  # Sample rate for recording
-AUDIO_OUTPUT_SAMPLE_RATE = 48000  # Sample rate for playback
+AUDIO_INPUT_SAMPLE_RATE = 22050  # Sample rate for recording
+AUDIO_OUTPUT_SAMPLE_RATE = 22050  # Sample rate for playback
 AUDIO_CHANNELS = 1  # Mono microphone input
 AUDIO_WIDTH = 2  # Bytes per sample
 
