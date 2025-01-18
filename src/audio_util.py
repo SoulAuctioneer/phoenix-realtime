@@ -185,6 +185,7 @@ class AudioPlayerAsync:
         self.sample_rate = AUDIO_OUTPUT_SAMPLE_RATE  # Use output sample rate for playback
         self.queue = []
         self.lock = threading.Lock()
+        print(f"Initializing audio player with device {OUTPUT_DEVICE_INDEX} and sample rate {self.sample_rate}")
         self.stream = sd.OutputStream(
             callback=self.callback,
             device=OUTPUT_DEVICE_INDEX,

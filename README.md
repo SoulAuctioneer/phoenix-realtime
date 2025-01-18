@@ -15,3 +15,9 @@ Based on OpenAI's realtime API Python example: https://github.com/openai/openai-
 7. Run install.sh
 8. Add your OpenAI API key to local.env file
 9. Run `./run.sh`
+
+## Testing an alternative setup:
+
+1. Connect Respeaker 2 Mic HAT to Raspberry Pi Zero 2W.
+2. Connect Raspberry Pi Zero 2W to power.
+3. Follow these instructions, but be sure to install 32-bit Bullseye light: https://github.com/rhasspy/wyoming-satellite/blob/master/docs/tutorial_2mic.md
