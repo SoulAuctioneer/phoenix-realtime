@@ -178,24 +178,18 @@ class RealtimeApp:
 
                 self.log_event(event)
 
-                match event.type:
-                    case "session.created" | "session.updated":
-                        await self._handle_session_event(event)
-                    
-                    case "response.audio.delta":
-                        await self._handle_audio_delta(event)
-                    
-                    case "input_audio_buffer.speech_started":
-                        await self._handle_speech_started(event)
-                    
-                    case "response.created":
-                        self.is_response_active.set()
-                    
-                    case "response.done":
-                        self.is_response_active.clear()
-                    
-                    case "response.audio_transcript.delta":
-                        acc_items[event.item_id] = acc_items.get(event.item_id, "") + event.delta
+                if event.type == "session.created" or event.type == "session.updated":
+                    await self._handle_session_event(event)                
+                elif event.type == "response.audio.delta":
+                    await self._handle_audio_delta(event)
+                elif event.type == "input_audio_buffer.speech_started":
+                    await self._handle_speech_started(event)  
+                elif event.type == "response.created":
+                    self.is_response_active.set()
+                elif event.type == "response.done":
+                    self.is_response_active.clear()
+                elif event.type == "response.audio_transcript.delta":
+                    acc_items[event.item_id] = acc_items.get(event.item_id, "") + event.delta
 
         except Exception as e:
             if not self.is_running:
