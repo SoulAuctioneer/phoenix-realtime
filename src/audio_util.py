@@ -5,7 +5,7 @@ import sys
 import base64
 import asyncio
 import threading
-from typing import Callable, Awaitable, Optional, Tuple
+from typing import Callable, Awaitable, Optional, Tuple, Any, cast
 
 import numpy as np
 # import pyaudio
@@ -14,7 +14,7 @@ import sounddevice as sd
 
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 from config import (
-    AUDIO_INPUT_DEVICE, AUDIO_OUTPUT_DEVICE, AUDIO_OUTPUT_CHUNK_LENGTH_S,
+    AUDIO_INPUT_BUFFER_SIZE_MS, AUDIO_INPUT_DEVICE, AUDIO_OUTPUT_DEVICE, AUDIO_OUTPUT_CHUNK_LENGTH_S,
     AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE, AUDIO_INPUT_CHANNELS, AUDIO_OUTPUT_CHANNELS, AUDIO_OUTPUT_WIDTH,
     AUDIO_OUTPUT_LATENCY_MODE, AUDIO_OUTPUT_BLOCKSIZE_MULTIPLIER
 )
@@ -180,3 +180,69 @@ class AudioPlayerAsync:
 
     def terminate(self):
         self.stream.close()
+
+class AudioCaptureAsync:
+    """Asynchronous audio capture class using sounddevice."""
+    
+    def __init__(self):
+        self.stream = None
+        self.is_recording = asyncio.Event()
+        self.is_running = True
+        self.device = AUDIO_INPUT_DEVICE if AUDIO_INPUT_DEVICE is not None else sd.default.device[0]
+        self.capture_read_size = int(AUDIO_INPUT_SAMPLE_RATE * (AUDIO_INPUT_BUFFER_SIZE_MS / 1000))  # Convert ms to seconds
+
+    def start(self) -> None:
+        """Start recording audio."""
+        if self.stream is not None:
+            self.stop()
+
+        self.stream = sd.InputStream(
+            device=self.device,
+            channels=AUDIO_INPUT_CHANNELS,
+            samplerate=AUDIO_INPUT_SAMPLE_RATE,
+            dtype="int16",
+        )
+        self.stream.start()
+        self.is_recording.set()
+
+    def stop(self) -> None:
+        """Stop recording audio."""
+        self.is_recording.clear()
+        if self.stream is not None:
+            self.stream.stop()
+            self.stream.close()
+            self.stream = None
+
+    def terminate(self) -> None:
+        """Clean up resources."""
+        self.is_running = False
+        self.stop()
+
+    async def read_chunk(self) -> tuple[np.ndarray, None]:
+        """Read a chunk of audio data.
+        
+        Returns:
+            Tuple of (audio_data, overflow) where audio_data is a numpy array of PCM data
+        """
+        if not self.is_recording.is_set() or self.stream is None:
+            return np.array([], dtype=np.int16), None
+
+        try:
+            # Wait for sufficient audio to be available
+            while self.stream is not None and self.stream.read_available < self.capture_read_size:
+                await asyncio.sleep(0)
+                if not self.is_recording.is_set() or self.stream is None:
+                    return np.array([], dtype=np.int16), None
+
+            # Double check stream is still valid
+            if self.stream is None:
+                return np.array([], dtype=np.int16), None
+
+            data, overflow = self.stream.read(self.capture_read_size)
+            # Ensure data is flattened to 1D array
+            if len(data.shape) > 1:
+                data = data.flatten()
+            return data, overflow
+        except Exception as e:
+            debug_print(f"Error reading audio chunk: {e}")
+            return np.array([], dtype=np.int16), None

@@ -9,7 +9,7 @@ import asyncio
 import sys
 from typing import Any, cast
 
-from audio_util import ( AudioPlayerAsync, set_debug_callback )
+from audio_util import ( AudioPlayerAsync, AudioCaptureAsync, set_debug_callback )
 
 from openai import AsyncOpenAI
 from openai.types.beta.realtime.session import Session
@@ -34,6 +34,7 @@ class RealtimeApp:
     is_playing_audio: asyncio.Event
     is_response_active: asyncio.Event  # Track if there's an active response
     audio_player: AudioPlayerAsync
+    audio_capture: AudioCaptureAsync
     last_audio_item_id: str | None
     connection: AsyncRealtimeConnection | None
     session: Session | None
@@ -89,6 +90,7 @@ class RealtimeApp:
         self.session = None
         self.client = AsyncOpenAI(api_key=OPENAI_API_KEY)
         self.audio_player = AudioPlayerAsync()
+        self.audio_capture = AudioCaptureAsync()
         self.last_audio_item_id = None
         self.is_recording = asyncio.Event()
         self.is_connected = asyncio.Event()
@@ -222,21 +224,12 @@ class RealtimeApp:
         return self.connection
 
     async def send_mic_audio(self) -> None:
-        import sounddevice as sd  # type: ignore
-        device_info = sd.query_devices()
-        self.log(str(device_info))
-        read_size = int(AUDIO_INPUT_SAMPLE_RATE * (AUDIO_INPUT_BUFFER_SIZE_MS / 1000))  # Convert ms to seconds
-
+        """Send audio from the microphone to the Realtime API"""
         try:
             while self.is_running:
-                # Wait for recording to be enabled and stream to exist
-                if not self.is_recording.is_set() or not hasattr(self, 'stream'):
+                # Wait for recording to be enabled
+                if not self.is_recording.is_set():
                     await asyncio.sleep(0.01)
-                    continue
-
-                # Wait for sufficient audio to be available
-                if self.stream.read_available < read_size:
-                    await asyncio.sleep(0)
                     continue
 
                 # If we're playing audio and we're not allowed to record during playback, skip
@@ -245,10 +238,13 @@ class RealtimeApp:
                     continue
 
                 # Read audio data
-                data, _ = self.stream.read(read_size)
-                connection = await self._get_connection()
+                data, _ = await self.audio_capture.read_chunk()
+                if len(data) == 0:  # Skip if no data was read
+                    continue
 
-                await connection.input_audio_buffer.append(audio=base64.b64encode(cast(Any, data)).decode("utf-8"))
+                connection = await self._get_connection()
+                # Convert numpy array to bytes before encoding
+                await connection.input_audio_buffer.append(audio=base64.b64encode(data.tobytes()).decode("utf-8"))
                 await asyncio.sleep(0)
 
         except KeyboardInterrupt:
@@ -293,36 +289,16 @@ class RealtimeApp:
     async def start_recording(self) -> None:
         # Cancel any ongoing response and audio
         await self.cancel_response_and_playback()
-
-        # Ensure any existing stream is properly closed
-        if hasattr(self, 'stream'):
-            self.stream.stop()
-            self.stream.close()
-            delattr(self, 'stream')
-
-        # Create a fresh stream
-        import sounddevice as sd
-        read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
-        self.stream = sd.InputStream(
-            device=AUDIO_INPUT_DEVICE,
-            channels=AUDIO_OUTPUT_CHANNELS,
-            samplerate=AUDIO_INPUT_SAMPLE_RATE,
-            dtype="int16",
-        )
-        self.stream.start()
         
+        # Start recording
+        self.audio_capture.start()
         self.is_recording.set()
         self.log("Started recording")
 
     async def stop_recording(self) -> None:
         self.is_recording.clear()
+        self.audio_capture.stop()
         self.log("Stopped recording")
-
-        # Close the stream to ensure buffers are cleared
-        if hasattr(self, 'stream'):
-            self.stream.stop()
-            self.stream.close()
-            delattr(self, 'stream')
 
         if self.session and self.session.turn_detection is None:
             conn = await self._get_connection()
@@ -336,6 +312,7 @@ class RealtimeApp:
         self.is_running = False
         self.is_recording.clear()
         await self.cancel_response_and_playback()
+        self.audio_capture.terminate()
         if self.connection:
             try:
                 await self.connection.close()
@@ -370,10 +347,7 @@ class RealtimeApp:
         finally:
             self.is_running = False
             self.audio_player.terminate()
-            # Ensure we stop the audio stream
-            if hasattr(self, 'stream'):
-                self.stream.stop()
-                self.stream.close()
+            self.audio_capture.terminate()
 
 def main():
     """Main entry point"""
