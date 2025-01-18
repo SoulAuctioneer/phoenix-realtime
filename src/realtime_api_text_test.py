@@ -1,10 +1,11 @@
 import asyncio
 from openai import AsyncOpenAI
+from config import OPENAI_API_KEY, OPENAI_MODEL
 
 async def run_text_test():
-    client = AsyncOpenAI()
+    client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
-    async with client.beta.realtime.connect(model="gpt-4o-realtime-preview-2024-10-01") as connection:
+    async with client.beta.realtime.connect(model=OPENAI_MODEL) as connection:
         await connection.session.update(session={'modalities': ['text']})
 
         await connection.conversation.item.create(

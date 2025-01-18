@@ -2,7 +2,7 @@ import asyncio
 from audio_util import debug_audio_devices, validate_audio_config, get_device_info
 from realtime_api_text_test import run_text_test
 from push_to_talk_app import RealtimeApp
-import os
+from config import DEBUG_AUDIO
 
 async def run_initial_tests():
     # First show current audio configuration
@@ -19,7 +19,7 @@ async def run_initial_tests():
         exit(1)
     
     # Then run audio device debug if requested
-    if os.getenv('DEBUG_AUDIO', '').lower() in ('1', 'true', 'yes'):
+    if DEBUG_AUDIO:
         print("\nRunning audio device debug...")
         debug_audio_devices()
     
@@ -34,7 +34,7 @@ def main():
     # Then run the push to talk app
     print("\nStarting push to talk app...")
     app = RealtimeApp()
-    asyncio.run(app.start())
+    app.run()
 
 if __name__ == "__main__":
     main()

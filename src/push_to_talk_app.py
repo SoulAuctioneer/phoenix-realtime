@@ -12,8 +12,8 @@ from typing_extensions import override
 
 from textual import events
 from audio_util import (
-    CHANNELS, SAMPLE_RATE, INPUT_DEVICE_INDEX, AudioPlayerAsync,
-    set_debug_callback
+    INPUT_DEVICE_INDEX, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS,
+    AudioPlayerAsync, set_debug_callback
 )
 from textual.app import App, ComposeResult
 from textual.widgets import Button, Static, RichLog
@@ -23,6 +23,10 @@ from textual.containers import Container
 from openai import AsyncOpenAI
 from openai.types.beta.realtime.session import Session
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
+from config import (
+    OPENAI_API_KEY, OPENAI_MODEL, OPENAI_VOICE, OPENAI_MODALITIES,
+    OPENAI_INSTRUCTIONS, OPENAI_TRANSCRIPTION_MODEL, OPENAI_TURN_DETECTION
+)
 
 
 class SessionDisplay(Static):
@@ -150,16 +154,18 @@ class RealtimeApp(App[None]):
     connection: AsyncRealtimeConnection | None
     session: Session | None
     connected: asyncio.Event
+    is_playing_audio: asyncio.Event
 
     def __init__(self) -> None:
         super().__init__()
         self.connection = None
         self.session = None
-        self.client = AsyncOpenAI()
+        self.client = AsyncOpenAI(api_key=OPENAI_API_KEY)
         self.audio_player = AudioPlayerAsync()
         self.last_audio_item_id = None
         self.should_send_audio = asyncio.Event()
         self.connected = asyncio.Event()
+        self.is_playing_audio = asyncio.Event()
         
         # Set up debug callback
         def debug_to_ui(msg: str):
@@ -185,21 +191,19 @@ class RealtimeApp(App[None]):
 
     async def handle_realtime_connection(self) -> None:
         async with self.client.beta.realtime.connect(
-            model="gpt-4o-realtime-preview-2024-10-01",
+            model=OPENAI_MODEL,
         ) as conn:
             self.connection = conn
             self.connected.set()
             bottom_pane = self.query_one("#bottom-pane", RichLog)
             bottom_pane.write("[INFO] Connected to Realtime API\n")
 
-            # NOTE: This is th default, and can be omitted.
-            # if you want to manually handle VAD yourself, then set `'turn_detection': None`
             await conn.session.update(session={
-                "turn_detection": {"type": "server_vad"},
-                "modalities": ["text", "audio"],
-                "voice": "ballad",
-                "input_audio_transcription": {"model": "whisper-1"},
-                "instructions": "You are a friendly assistant."
+                # "turn_detection": {"type": OPENAI_TURN_DETECTION} if OPENAI_TURN_DETECTION else None,
+                # "modalities": OPENAI_MODALITIES,
+                # "voice": OPENAI_VOICE,
+                # "input_audio_transcription": {"model": OPENAI_TRANSCRIPTION_MODEL},
+                # "instructions": OPENAI_INSTRUCTIONS
             })
             bottom_pane.write("[INFO] Updated session settings\n")
 
@@ -228,9 +232,17 @@ class RealtimeApp(App[None]):
                         self.last_audio_item_id = event.item_id
                         bottom_pane = self.query_one("#bottom-pane", RichLog)
                         bottom_pane.write(f"[DEBUG] New audio response started: {event.item_id}\n")
+                        self.is_playing_audio.set()
 
                     bytes_data = base64.b64decode(event.delta)
                     self.audio_player.add_data(bytes_data)
+                    continue
+
+                if event.type == "response.done":
+                    # Signal that audio playback is complete
+                    self.is_playing_audio.clear()
+                    bottom_pane = self.query_one("#bottom-pane", RichLog)
+                    bottom_pane.write("[DEBUG] Response complete, resuming recording\n")
                     continue
 
                 if event.type == "response.audio_transcript.delta":
@@ -272,12 +284,12 @@ class RealtimeApp(App[None]):
         device_info = sd.query_devices()
         print(device_info)
 
-        read_size = int(SAMPLE_RATE * 0.02)
+        read_size = int(AUDIO_SAMPLE_RATE * 0.02)
 
         stream = sd.InputStream(
             device=INPUT_DEVICE_INDEX,  # Use ReSpeaker device for input
-            channels=CHANNELS,
-            samplerate=SAMPLE_RATE,
+            channels=AUDIO_CHANNELS,
+            samplerate=AUDIO_SAMPLE_RATE,
             dtype="int16",
         )
         stream.start()
@@ -290,9 +302,13 @@ class RealtimeApp(App[None]):
                     await asyncio.sleep(0)
                     continue
 
+                # Only process audio input if we should be sending AND we're not playing audio
                 await self.should_send_audio.wait()
-                status_indicator.is_recording = True
+                if self.is_playing_audio.is_set():
+                    await asyncio.sleep(0)
+                    continue
 
+                status_indicator.is_recording = True
                 data, _ = stream.read(read_size)
 
                 connection = await self._get_connection()
@@ -301,8 +317,8 @@ class RealtimeApp(App[None]):
                     sent_audio = True
 
                 await connection.input_audio_buffer.append(audio=base64.b64encode(cast(Any, data)).decode("utf-8"))
-
                 await asyncio.sleep(0)
+
         except KeyboardInterrupt:
             pass
         finally:
@@ -339,6 +355,7 @@ class RealtimeApp(App[None]):
                     except Exception as e:
                         # Silently handle cancellation failures
                         pass
+                
                 self.should_send_audio.set()
                 status_indicator.is_recording = True
                 bottom_pane.write("[INFO] Started recording\n")

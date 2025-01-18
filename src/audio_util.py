@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import os
 import sys
 import base64
 import asyncio
@@ -14,12 +13,10 @@ import sounddevice as sd
 from pydub import AudioSegment
 
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
-
-# Audio configuration with environment variable overrides and defaults
-CHUNK_LENGTH_S = float(os.getenv('AUDIO_CHUNK_LENGTH_S', '0.05'))
-SAMPLE_RATE = int(os.getenv('AUDIO_SAMPLE_RATE', '48000'))
-CHANNELS = int(os.getenv('AUDIO_CHANNELS', '2'))
-SOUNDCARD_WIDTH = int(os.getenv('AUDIO_WIDTH', '2'))
+from config import (
+    AUDIO_INPUT_DEVICE, AUDIO_OUTPUT_DEVICE, AUDIO_CHUNK_LENGTH_S,
+    AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_WIDTH
+)
 
 def find_default_devices() -> Tuple[Optional[int], Optional[int]]:
     """Find system default input and output devices"""
@@ -61,11 +58,11 @@ def find_respeaker_device() -> Tuple[Optional[int], Optional[int]]:
                 
     return input_idx, output_idx
 
-# First try to get devices from environment variables
-input_idx = os.getenv('AUDIO_INPUT_DEVICE')
-output_idx = os.getenv('AUDIO_OUTPUT_DEVICE')
+# First try to get devices from config
+input_idx = AUDIO_INPUT_DEVICE
+output_idx = AUDIO_OUTPUT_DEVICE
 
-# If not set in env, try to find ReSpeaker
+# If not set in config, try to find ReSpeaker
 if input_idx is None or output_idx is None:
     input_idx, output_idx = find_respeaker_device()
     
@@ -91,8 +88,8 @@ def get_device_info() -> str:
         return f"""Current audio configuration:
 Input Device ({INPUT_DEVICE_INDEX}): {input_name}
 Output Device ({OUTPUT_DEVICE_INDEX}): {output_name}
-Sample Rate: {SAMPLE_RATE}Hz
-Channels: {CHANNELS}
+Sample Rate: {AUDIO_SAMPLE_RATE}Hz
+Channels: {AUDIO_CHANNELS}
 """
     except Exception as e:
         return f"Error getting device info: {e}"
@@ -109,13 +106,13 @@ def validate_audio_config() -> bool:
             return False
             
         input_device = devices[INPUT_DEVICE_INDEX]
-        if input_device['max_input_channels'] < CHANNELS:
-            debug_print(f"Input device does not support {CHANNELS} channels")
+        if input_device['max_input_channels'] < AUDIO_CHANNELS:
+            debug_print(f"Input device does not support {AUDIO_CHANNELS} channels")
             return False
             
         output_device = devices[OUTPUT_DEVICE_INDEX]
-        if output_device['max_output_channels'] < CHANNELS:
-            debug_print(f"Output device does not support {CHANNELS} channels")
+        if output_device['max_output_channels'] < AUDIO_CHANNELS:
+            debug_print(f"Output device does not support {AUDIO_CHANNELS} channels")
             return False
             
         return True
@@ -191,16 +188,21 @@ class AudioPlayerAsync:
             callback=self.callback,
             device=OUTPUT_DEVICE_INDEX,
             samplerate=self.sample_rate,
-            channels=2,  # dmixed device has 2 output channels
+            channels=AUDIO_CHANNELS,
             dtype=np.int16,
-            blocksize=int(CHUNK_LENGTH_S * self.sample_rate),  # use instance variable
+            blocksize=int(AUDIO_CHUNK_LENGTH_S * self.sample_rate),
             latency='low'  # Use low latency mode
         )
         self.playing = False
         self._frame_count = 0
+        self.paused = False  # Add paused state
 
     def callback(self, outdata, frames, time, status):  # noqa
         with self.lock:
+            if self.paused:  # If paused, output silence
+                outdata.fill(0)
+                return
+
             data = np.empty(0, dtype=np.int16)
 
             # get next item from queue if there is still space in the buffer
@@ -218,13 +220,13 @@ class AudioPlayerAsync:
                 data = np.concatenate((data, np.zeros(frames - len(data), dtype=np.int16)))
 
             # Ensure the output data has the correct shape for stereo
-            if CHANNELS == 2:
+            if AUDIO_CHANNELS == 2:
                 # Duplicate mono data to both channels if input is mono
                 if len(data.shape) == 1:
                     data = np.column_stack((data, data))
                 outdata[:] = data
             else:
-                outdata[:] = data.reshape(-1, CHANNELS)
+                outdata[:] = data.reshape(-1, AUDIO_CHANNELS)
 
     def reset_frame_count(self):
         self._frame_count = 0
@@ -244,11 +246,22 @@ class AudioPlayerAsync:
         self.playing = True
         self.stream.start()
 
+    def pause(self):
+        """Pause audio playback without clearing the queue"""
+        with self.lock:
+            self.paused = True
+
+    def resume(self):
+        """Resume audio playback"""
+        with self.lock:
+            self.paused = False
+
     def stop(self):
         self.playing = False
         self.stream.stop()
         with self.lock:
             self.queue = []
+            self.paused = False  # Reset pause state when stopping
 
     def terminate(self):
         self.stream.close()
