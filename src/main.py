@@ -22,19 +22,20 @@ async def run_initial_tests():
     if DEBUG_AUDIO:
         print("\nRunning audio device debug...")
         debug_audio_devices()
-    
-    # Then run text test
-    # print("\nRunning text test...")
-    # await run_text_test()
 
-def main():
-    # Optionally Run the async tests first
-    asyncio.run(run_initial_tests())
+async def main():
+    # Run the async tests first
+    await run_initial_tests()
     
     # Then run the push to talk app
     print("\nStarting push to talk app...")
     app = RealtimeApp()
-    app.run()
+    await app.run()
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nInterrupted by user")
+    except Exception as e:
+        print(f"\nError: {e}")

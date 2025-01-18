@@ -1,4 +1,3 @@
-textual
 numpy
 pyaudio
 pydub
