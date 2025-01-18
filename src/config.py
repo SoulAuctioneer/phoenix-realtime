@@ -4,7 +4,7 @@ import os
 AUDIO_INPUT_DEVICE = None  # Will be auto-detected
 AUDIO_OUTPUT_DEVICE = None  # Will be auto-detected
 AUDIO_CHUNK_LENGTH_S = 0.05
-AUDIO_SAMPLE_RATE = 48000
+AUDIO_SAMPLE_RATE = 24000
 AUDIO_CHANNELS = 1  # Changed from 2 to 1 to support mono microphones
 AUDIO_WIDTH = 2  # bytes per sample
 
@@ -18,7 +18,7 @@ if not OPENAI_API_KEY:
 
 # Model and voice settings
 OPENAI_MODEL = "gpt-4o-realtime-preview"
-OPENAI_VOICE = "echo"  # Options: alloy, echo, fable, onyx, nova, shimmer, ballad
+OPENAI_VOICE = "ash"  # Options: alloy, echo, fable, onyx, nova, shimmer, ballad
 
 # Session settings
 OPENAI_MODALITIES = ["text", "audio"]
