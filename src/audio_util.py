@@ -100,24 +100,6 @@ class AudioPlayerAsync:
         self.paused = False  # Add paused state
         self.device = AUDIO_OUTPUT_DEVICE if AUDIO_OUTPUT_DEVICE is not None else sd.default.device[1]
 
-    @property
-    def volume(self) -> float:
-        """Get the current device volume."""
-        try:
-            return sd.get_device_volume(self.device)[0]  # Get first channel volume
-        except Exception as e:
-            debug_print(f"Error getting volume: {e}")
-            return 1.0
-
-    @volume.setter
-    def volume(self, value: float) -> None:
-        """Set the device volume. Value should be between 0.0 and 1.0."""
-        try:
-            value = max(0.0, min(1.0, value))  # Clamp between 0.0 and 1.0
-            sd.set_device_volume(value, self.device)
-        except Exception as e:
-            debug_print(f"Error setting volume: {e}")
-
     def callback(self, outdata, frames, time, status):
         if status:
             # Log any errors but continue playback

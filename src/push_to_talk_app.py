@@ -41,6 +41,7 @@ class RealtimeApp:
     session: Session | None
     is_running: bool
     audio_monitor_task: asyncio.Task | None
+    stream: Any
 
     def log(self, msg: str) -> None:
         """Write a message to stdout and flush."""
@@ -144,7 +145,7 @@ class RealtimeApp:
     async def _handle_session_event(self, event: Any) -> None:
         """Handle session.created and session.updated events."""
         self.session = event.session
-        self.log("Ready to record. Press K to start, Q to quit.")
+        self.log("Ready to record. Press K to start/stop recording, C to cancel current audio playback, Q to quit.")
 
     async def _handle_audio_delta(self, event: Any) -> None:
         """Handle response.audio.delta events."""
@@ -208,18 +209,16 @@ class RealtimeApp:
         device_info = sd.query_devices()
         self.log(str(device_info))
         read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
-        stream = sd.InputStream(
-            device=AUDIO_INPUT_DEVICE,
-            channels=AUDIO_CHANNELS,
-            samplerate=AUDIO_INPUT_SAMPLE_RATE,
-            dtype="int16",
-        )
-        stream.start()
 
         try:
             while self.is_running:
+                # Wait for recording to be enabled and stream to exist
+                if not self.is_recording.is_set() or not hasattr(self, 'stream'):
+                    await asyncio.sleep(0.01)
+                    continue
+
                 # Wait for sufficient audio to be available
-                if stream.read_available < read_size:
+                if self.stream.read_available < read_size:
                     await asyncio.sleep(0)
                     continue
 
@@ -227,12 +226,9 @@ class RealtimeApp:
                 if self.is_playing_audio.is_set() and not ALLOW_RECORDING_DURING_PLAYBACK:
                     await asyncio.sleep(0)
                     continue
-                
-                # Wait for recording to be enabled
-                await self.is_recording.wait()
 
                 # Read audio data
-                data, _ = stream.read(read_size)
+                data, _ = self.stream.read(read_size)
                 connection = await self._get_connection()
 
                 await connection.input_audio_buffer.append(audio=base64.b64encode(cast(Any, data)).decode("utf-8"))
@@ -240,9 +236,6 @@ class RealtimeApp:
 
         except KeyboardInterrupt:
             pass
-        finally:
-            stream.stop()
-            stream.close()
 
     async def monitor_audio_playback(self) -> None:
         """Monitor audio playback and update is_playing_audio flag"""
@@ -255,10 +248,21 @@ class RealtimeApp:
                     self.log("Audio playback complete")
             await asyncio.sleep(0.05)
 
+    async def cancel_audio(self) -> None:
+        """Cancel any ongoing audio playback and response"""
+        if self.is_playing_audio.is_set() or self.is_response_active.is_set():
+            self.log("Cancelling audio playback and response")
+            if self.is_response_active.is_set():
+                try:
+                    await self.connection.send({"type": "response.cancel"})
+                except:
+                    pass
+            if self.is_playing_audio.is_set():
+                self.audio_player.stop()
+                self.is_playing_audio.clear()
+
     async def handle_input(self) -> None:
         """Handle keyboard input in a separate task"""
-        self.log("Ready for input. Press K to start/stop recording, Q to quit")
-        self.log("Volume controls: + to increase, - to decrease volume by 5%")
         
         while self.is_running:
             try:
@@ -269,10 +273,8 @@ class RealtimeApp:
                     await self.exit()
                 elif key.lower() == 'k':
                     await self.toggle_recording()
-                elif key == '+':
-                    await self.adjust_volume(0.05)  # Increase by 5%
-                elif key == '-':
-                    await self.adjust_volume(-0.05)  # Decrease by 5%
+                elif key.lower() == 'c':
+                    await self.cancel_audio()
 
             except Exception as e:
                 self.log_error(f"Input handling error: {e}")
@@ -291,12 +293,36 @@ class RealtimeApp:
                 await self.connection.send({"type": "response.cancel"})
             except Exception as e:
                 pass
+
+        # Ensure any existing stream is properly closed
+        if hasattr(self, 'stream'):
+            self.stream.stop()
+            self.stream.close()
+            delattr(self, 'stream')
+
+        # Create a fresh stream
+        import sounddevice as sd
+        read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
+        self.stream = sd.InputStream(
+            device=AUDIO_INPUT_DEVICE,
+            channels=AUDIO_CHANNELS,
+            samplerate=AUDIO_INPUT_SAMPLE_RATE,
+            dtype="int16",
+        )
+        self.stream.start()
+        
         self.is_recording.set()
         self.log("Started recording")
 
     async def stop_recording(self) -> None:
         self.is_recording.clear()
         self.log("Stopped recording")
+
+        # Close the stream to ensure buffers are cleared
+        if hasattr(self, 'stream'):
+            self.stream.stop()
+            self.stream.close()
+            delattr(self, 'stream')
 
         if self.session and self.session.turn_detection is None:
             conn = await self._get_connection()
@@ -350,13 +376,6 @@ class RealtimeApp:
             if hasattr(self, 'stream'):
                 self.stream.stop()
                 self.stream.close()
-
-    async def adjust_volume(self, delta: float) -> None:
-        """Adjust the volume by the given delta."""
-        current_volume = self.audio_player.volume
-        new_volume = current_volume + delta
-        self.audio_player.volume = new_volume
-        self.log(f"Device volume set to {self.audio_player.volume:.0%}")
 
 def main():
     """Main entry point"""
