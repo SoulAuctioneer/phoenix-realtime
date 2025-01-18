@@ -10,7 +10,8 @@ import sys
 from typing import Any, cast
 
 from audio_util import (
-    INPUT_DEVICE_INDEX, AUDIO_INPUT_SAMPLE_RATE, AUDIO_CHANNELS,
+    # INPUT_DEVICE_INDEX, 
+    AUDIO_INPUT_SAMPLE_RATE, AUDIO_CHANNELS,
     AudioPlayerAsync, set_debug_callback
 )
 
