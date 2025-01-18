@@ -258,6 +258,7 @@ class RealtimeApp:
     async def handle_input(self) -> None:
         """Handle keyboard input in a separate task"""
         self.log("Ready for input. Press K to start/stop recording, Q to quit")
+        self.log("Volume controls: + to increase, - to decrease volume by 5%")
         
         while self.is_running:
             try:
@@ -268,6 +269,10 @@ class RealtimeApp:
                     await self.exit()
                 elif key.lower() == 'k':
                     await self.toggle_recording()
+                elif key == '+':
+                    await self.adjust_volume(0.05)  # Increase by 5%
+                elif key == '-':
+                    await self.adjust_volume(-0.05)  # Decrease by 5%
 
             except Exception as e:
                 self.log_error(f"Input handling error: {e}")
@@ -345,6 +350,13 @@ class RealtimeApp:
             if hasattr(self, 'stream'):
                 self.stream.stop()
                 self.stream.close()
+
+    async def adjust_volume(self, delta: float) -> None:
+        """Adjust the volume by the given delta."""
+        current_volume = self.audio_player.volume
+        new_volume = current_volume + delta
+        self.audio_player.volume = new_volume
+        self.log(f"Device volume set to {self.audio_player.volume:.0%}")
 
 def main():
     """Main entry point"""

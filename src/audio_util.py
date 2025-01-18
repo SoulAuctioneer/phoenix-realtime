@@ -15,7 +15,8 @@ from pydub import AudioSegment
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 from config import (
     AUDIO_INPUT_DEVICE, AUDIO_OUTPUT_DEVICE, AUDIO_CHUNK_LENGTH_S,
-    AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_WIDTH
+    AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_WIDTH,
+    AUDIO_LATENCY_MODE, AUDIO_BLOCKSIZE_MULTIPLIER
 )
 
 # Global debug callback
@@ -81,20 +82,47 @@ class AudioPlayerAsync:
         self.sample_rate = AUDIO_OUTPUT_SAMPLE_RATE  # Use output sample rate for playback
         self.queue = []
         self.lock = threading.Lock()
+        
+        # Calculate blocksize using the multiplier from config
+        blocksize = int(AUDIO_CHUNK_LENGTH_S * self.sample_rate * AUDIO_BLOCKSIZE_MULTIPLIER)
+        
         self.stream = sd.OutputStream(
             callback=self.callback,
             device=AUDIO_OUTPUT_DEVICE,
             samplerate=self.sample_rate,
             channels=AUDIO_CHANNELS,
             dtype=np.int16,
-            blocksize=int(AUDIO_CHUNK_LENGTH_S * self.sample_rate),
-            latency='low'  # Use low latency mode
+            blocksize=blocksize,
+            latency=AUDIO_LATENCY_MODE  # Use latency mode from config
         )
         self.playing = False
         self._frame_count = 0
         self.paused = False  # Add paused state
+        self.device = AUDIO_OUTPUT_DEVICE if AUDIO_OUTPUT_DEVICE is not None else sd.default.device[1]
 
-    def callback(self, outdata, frames, time, status):  # noqa
+    @property
+    def volume(self) -> float:
+        """Get the current device volume."""
+        try:
+            return sd.get_device_volume(self.device)[0]  # Get first channel volume
+        except Exception as e:
+            debug_print(f"Error getting volume: {e}")
+            return 1.0
+
+    @volume.setter
+    def volume(self, value: float) -> None:
+        """Set the device volume. Value should be between 0.0 and 1.0."""
+        try:
+            value = max(0.0, min(1.0, value))  # Clamp between 0.0 and 1.0
+            sd.set_device_volume(value, self.device)
+        except Exception as e:
+            debug_print(f"Error setting volume: {e}")
+
+    def callback(self, outdata, frames, time, status):
+        if status:
+            # Log any errors but continue playback
+            debug_print(f'Audio callback status: {status}')
+            
         with self.lock:
             if self.paused:  # If paused, output silence
                 outdata.fill(0)
@@ -116,14 +144,18 @@ class AudioPlayerAsync:
             if len(data) < frames:
                 data = np.concatenate((data, np.zeros(frames - len(data), dtype=np.int16)))
 
-            # Ensure the output data has the correct shape for stereo
-            if AUDIO_CHANNELS == 2:
-                # Duplicate mono data to both channels if input is mono
-                if len(data.shape) == 1:
-                    data = np.column_stack((data, data))
-                outdata[:] = data
-            else:
-                outdata[:] = data.reshape(-1, AUDIO_CHANNELS)
+            try:
+                # Ensure the output data has the correct shape for stereo
+                if AUDIO_CHANNELS == 2:
+                    # Duplicate mono data to both channels if input is mono
+                    if len(data.shape) == 1:
+                        data = np.column_stack((data, data))
+                    outdata[:] = data
+                else:
+                    outdata[:] = data.reshape(-1, AUDIO_CHANNELS)
+            except Exception as e:
+                debug_print(f'Error in audio callback: {e}')
+                outdata.fill(0)  # Output silence on error
 
     def reset_frame_count(self):
         self._frame_count = 0

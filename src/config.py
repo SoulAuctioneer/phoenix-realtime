@@ -10,6 +10,10 @@ AUDIO_OUTPUT_SAMPLE_RATE = 24000  # Sample rate for playback
 AUDIO_CHANNELS = 1  # Mono microphone input
 AUDIO_WIDTH = 2  # Bytes per sample
 
+# Audio performance tuning
+AUDIO_LATENCY_MODE = 'high'  # Options: 'low' or 'high'. Use 'high' for more stable playback on slower devices
+AUDIO_BLOCKSIZE_MULTIPLIER = 2  # Multiply the base blocksize by this value. Use higher values (e.g. 2) for slower devices
+
 # Debug Configuration
 DEBUG_AUDIO = False
 
