@@ -17,7 +17,7 @@ if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
 
 # Model and voice settings
-OPENAI_MODEL = "gpt-4o-realtime-preview-2024-10-01"
+OPENAI_MODEL = "gpt-4o-realtime-preview"
 OPENAI_VOICE = "echo"  # Options: alloy, echo, fable, onyx, nova, shimmer, ballad
 
 # Session settings

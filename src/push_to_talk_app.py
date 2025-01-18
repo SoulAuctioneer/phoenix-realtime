@@ -60,12 +60,13 @@ class RealtimeApp:
             self.connected.set()
             print("[INFO] Connected to Realtime API")
 
+            # Use turn detection setting from config
             await conn.session.update(session={
-                # "turn_detection": {"type": OPENAI_TURN_DETECTION} if OPENAI_TURN_DETECTION else None,
-                # "modalities": OPENAI_MODALITIES,
-                # "voice": OPENAI_VOICE,
-                # "input_audio_transcription": {"model": OPENAI_TRANSCRIPTION_MODEL},
-                # "instructions": OPENAI_INSTRUCTIONS
+                "turn_detection": {"type": OPENAI_TURN_DETECTION} if OPENAI_TURN_DETECTION else None,
+                "modalities": OPENAI_MODALITIES,
+                "voice": OPENAI_VOICE,
+                "input_audio_transcription": {"model": OPENAI_TRANSCRIPTION_MODEL},
+                "instructions": OPENAI_INSTRUCTIONS
             })
             print("[INFO] Updated session settings")
 
@@ -152,8 +153,8 @@ class RealtimeApp:
                     continue
 
                 # Only process audio input if we should be sending AND we're not playing audio
-                await self.should_send_audio.wait()
-                if self.is_playing_audio.is_set():
+                if not self.should_send_audio.is_set() or self.is_playing_audio.is_set():
+                    sent_audio = False  # Reset sent_audio when we stop sending
                     await asyncio.sleep(0)
                     continue
 
