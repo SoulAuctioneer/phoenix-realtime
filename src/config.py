@@ -14,7 +14,7 @@ AUDIO_WIDTH = 2  # Bytes per sample
 DEBUG_AUDIO = True
 
 # Recording Configuration
-ALLOW_RECORDING_DURING_PLAYBACK = True  # Whether to allow recording while response audio is being played. Enable if not using headphones or haven't implemented echo cancellation.
+ALLOW_RECORDING_DURING_PLAYBACK = False  # Whether to allow recording while response audio is being played. Enable if not using headphones or haven't implemented echo cancellation.
 
 # OpenAI Realtime API Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
