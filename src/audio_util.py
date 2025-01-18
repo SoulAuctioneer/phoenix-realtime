@@ -58,25 +58,25 @@ def find_respeaker_device() -> Tuple[Optional[int], Optional[int]]:
                 
     return input_idx, output_idx
 
-# First try to get devices from config
-input_device = AUDIO_INPUT_DEVICE
-output_device = AUDIO_OUTPUT_DEVICE
+# # First try to get devices from config
+# input_device = AUDIO_INPUT_DEVICE
+# output_device = AUDIO_OUTPUT_DEVICE
 
-# If not set in config, try to find ReSpeaker
-if input_device is None or output_device is None:
-    input_device, output_device = find_respeaker_device()
+# # If not set in config, try to find ReSpeaker
+# if input_device is None or output_device is None:
+#     input_device, output_device = find_respeaker_device()
     
-    # If no ReSpeaker found, use system defaults
-    if input_device is None or output_device is None:
-        default_input, default_output = find_default_devices()
-        if input_device is None:
-            input_device = default_input
-        if output_device is None:
-            output_device = default_output
+#     # If no ReSpeaker found, use system defaults
+#     if input_device is None or output_device is None:
+#         default_input, default_output = find_default_devices()
+#         if input_device is None:
+#             input_device = default_input
+#         if output_device is None:
+#             output_device = default_output
 
-# Use device indices, fallback to 0 if not found
-INPUT_DEVICE_INDEX = 0 if input_device is None else input_device
-OUTPUT_DEVICE_INDEX = 0 if output_device is None else output_device
+# # Use device indices, fallback to 0 if not found
+# INPUT_DEVICE_INDEX = 0 if input_device is None else input_device
+# OUTPUT_DEVICE_INDEX = 0 if output_device is None else output_device
 
 def get_device_info() -> str:
     """Get formatted string of current device configuration"""
