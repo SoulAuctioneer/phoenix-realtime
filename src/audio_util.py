@@ -15,7 +15,7 @@ from pydub import AudioSegment
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 from config import (
     AUDIO_INPUT_DEVICE, AUDIO_OUTPUT_DEVICE, AUDIO_CHUNK_LENGTH_S,
-    AUDIO_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_WIDTH
+    AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_WIDTH
 )
 
 def find_default_devices() -> Tuple[Optional[int], Optional[int]]:
@@ -86,11 +86,11 @@ def get_device_info() -> str:
         output_name = devices[OUTPUT_DEVICE_INDEX]['name'] if OUTPUT_DEVICE_INDEX < len(devices) else "Unknown"
         
         return f"""Current audio configuration:
-Input Device ({INPUT_DEVICE_INDEX}): {input_name}
-Output Device ({OUTPUT_DEVICE_INDEX}): {output_name}
-Sample Rate: {AUDIO_SAMPLE_RATE}Hz
-Channels: {AUDIO_CHANNELS}
-"""
+            Input Device ({INPUT_DEVICE_INDEX}): {input_name}
+            Output Device ({OUTPUT_DEVICE_INDEX}): {output_name}
+            Sample Rate: {AUDIO_SAMPLE_RATE}Hz
+            Channels: {AUDIO_CHANNELS}
+            """
     except Exception as e:
         return f"Error getting device info: {e}"
 
@@ -174,14 +174,14 @@ def audio_to_pcm16_base64(audio_bytes: bytes) -> bytes:
     # load the audio file from the byte stream
     audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
     print(f"Loaded audio: {audio.frame_rate=} {audio.channels=} {audio.sample_width=} {audio.frame_width=}")
-    # resample to 24kHz mono pcm16
-    pcm_audio = audio.set_frame_rate(AUDIO_SAMPLE_RATE).set_channels(AUDIO_CHANNELS).set_sample_width(2).raw_data
+    # resample to input sample rate mono pcm16
+    pcm_audio = audio.set_frame_rate(AUDIO_INPUT_SAMPLE_RATE).set_channels(AUDIO_CHANNELS).set_sample_width(2).raw_data
     return pcm_audio
 
 
 class AudioPlayerAsync:
     def __init__(self):
-        self.sample_rate = AUDIO_SAMPLE_RATE  # Use config value instead of hardcoded
+        self.sample_rate = AUDIO_OUTPUT_SAMPLE_RATE  # Use output sample rate for playback
         self.queue = []
         self.lock = threading.Lock()
         self.stream = sd.OutputStream(
@@ -282,12 +282,12 @@ async def send_audio_worker_sounddevice(
     device_info = sd.query_devices()
     debug_print(str(device_info))
 
-    read_size = int(AUDIO_SAMPLE_RATE * 0.02)
+    read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
 
     stream = sd.InputStream(
         device=INPUT_DEVICE_INDEX,
         channels=AUDIO_CHANNELS,
-        samplerate=AUDIO_SAMPLE_RATE,
+        samplerate=AUDIO_INPUT_SAMPLE_RATE,
         dtype="int16",
     )
     stream.start()

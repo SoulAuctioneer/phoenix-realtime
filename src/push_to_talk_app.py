@@ -10,7 +10,7 @@ import sys
 from typing import Any, cast
 
 from audio_util import (
-    INPUT_DEVICE_INDEX, AUDIO_SAMPLE_RATE, AUDIO_CHANNELS,
+    INPUT_DEVICE_INDEX, AUDIO_INPUT_SAMPLE_RATE, AUDIO_CHANNELS,
     AudioPlayerAsync, set_debug_callback
 )
 
@@ -206,11 +206,11 @@ class RealtimeApp:
         import sounddevice as sd  # type: ignore
         device_info = sd.query_devices()
         self.log(str(device_info))
-        read_size = int(AUDIO_SAMPLE_RATE * 0.02)
+        read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
         stream = sd.InputStream(
             device=INPUT_DEVICE_INDEX,
             channels=AUDIO_CHANNELS,
-            samplerate=AUDIO_SAMPLE_RATE,
+            samplerate=AUDIO_INPUT_SAMPLE_RATE,
             dtype="int16",
         )
         stream.start()
