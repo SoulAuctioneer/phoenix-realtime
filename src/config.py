@@ -5,11 +5,14 @@ AUDIO_INPUT_DEVICE = None  # Will be auto-detected
 AUDIO_OUTPUT_DEVICE = None  # Will be auto-detected
 AUDIO_CHUNK_LENGTH_S = 0.05
 AUDIO_SAMPLE_RATE = 24000
-AUDIO_CHANNELS = 1  # Changed from 2 to 1 to support mono microphones
-AUDIO_WIDTH = 2  # bytes per sample
+AUDIO_CHANNELS = 1  # Mono microphone input
+AUDIO_WIDTH = 2  # Bytes per sample
 
 # Debug Configuration
 DEBUG_AUDIO = False
+
+# Recording Configuration
+DISABLE_RECORDING_DURING_PLAYBACK = False  # Whether to automatically stop recording while audio is being played. Enable if not using headphones or haven't implemented echo cancellation.
 
 # OpenAI Realtime API Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')

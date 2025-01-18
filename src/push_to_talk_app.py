@@ -19,7 +19,8 @@ from openai.types.beta.realtime.session import Session
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 from config import (
     OPENAI_API_KEY, OPENAI_MODEL, OPENAI_VOICE, OPENAI_MODALITIES,
-    OPENAI_INSTRUCTIONS, OPENAI_TRANSCRIPTION_MODEL, OPENAI_TURN_DETECTION
+    OPENAI_INSTRUCTIONS, OPENAI_TRANSCRIPTION_MODEL, OPENAI_TURN_DETECTION,
+    DISABLE_RECORDING_DURING_PLAYBACK
 )
 
 class RealtimeApp:
@@ -58,6 +59,7 @@ class RealtimeApp:
         if event_type == "error":
             log_msg += f": {event.error.message}"
         elif event_type == "response.audio_transcript.delta":
+            return
             log_msg += f": {event.delta}"
         elif event_type == "response.audio_transcript.done":
             log_msg += f": {event.transcript}"
@@ -140,6 +142,15 @@ class RealtimeApp:
 
                     bytes_data = base64.b64decode(event.delta)
                     self.audio_player.add_data(bytes_data)
+                    continue
+
+                if event.type == "input_audio_buffer.speech_started":
+                    self.log_event(event)
+                    if not DISABLE_RECORDING_DURING_PLAYBACK or not self.is_playing_audio.is_set():
+                        self.log_with_breaks("[DEBUG] Speech detected, cancelling ongoing response and clearing audio buffer")
+                        # Cancel ongoing response and clear audio buffer when speech starts
+                        asyncio.create_task(self.connection.send({"type": "response.cancel"}))
+                        self.audio_player.stop()
                     continue
 
                 if event.type == "response.done":
@@ -247,18 +258,29 @@ class RealtimeApp:
                     await asyncio.sleep(0)
                     continue
 
-                # Only process audio input if we should be sending AND we're not playing audio
-                if not self.should_send_audio.is_set() or self.is_playing_audio.is_set():
-                    sent_audio = False  # Reset sent_audio when we stop sending
+                # Only check recording during playback if the feature is enabled
+                if DISABLE_RECORDING_DURING_PLAYBACK and self.is_playing_audio.is_set():
+                    self.log_with_breaks(f"[DEBUG] Recording during playback is disabled")
+                    if self.is_recording:
+                        self.is_recording = False
+                        self.log_with_breaks("[INFO] Paused recording while audio is playing")
+                    sent_audio = False
                     await asyncio.sleep(0)
                     continue
 
-                self.is_recording = True
+                # Wait for recording to be enabled
+                if not self.should_send_audio.is_set():
+                    if self.is_recording:
+                        self.is_recording = False
+                    sent_audio = False
+                    await asyncio.sleep(0)
+                    continue
+
                 data, _ = stream.read(read_size)
+                self.is_recording = True
 
                 connection = await self._get_connection()
                 if not sent_audio:
-                    asyncio.create_task(connection.send({"type": "response.cancel"}))
                     sent_audio = True
 
                 await connection.input_audio_buffer.append(audio=base64.b64encode(cast(Any, data)).decode("utf-8"))
