@@ -9,7 +9,7 @@ AUDIO_CHANNELS = 1  # Mono microphone input
 AUDIO_WIDTH = 2  # Bytes per sample
 
 # Debug Configuration
-DEBUG_AUDIO = False
+DEBUG_AUDIO = True
 
 # Recording Configuration
 ALLOW_RECORDING_DURING_PLAYBACK = True  # Whether to allow recording while response audio is being played. Enable if not using headphones or haven't implemented echo cancellation.
