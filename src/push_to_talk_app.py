@@ -19,8 +19,14 @@ from openai.types.beta.realtime.session import Session
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 from config import (
     OPENAI_API_KEY, OPENAI_MODEL, OPENAI_VOICE, OPENAI_MODALITIES,
-    OPENAI_INSTRUCTIONS, OPENAI_TRANSCRIPTION_MODEL, OPENAI_TURN_DETECTION
+    OPENAI_INSTRUCTIONS, OPENAI_TRANSCRIPTION_MODEL, OPENAI_TURN_DETECTION,
+    DISABLE_RECORDING_DURING_PLAYBACK
 )
+
+# Maximum number of connection retries
+MAX_RETRIES = 3
+# Delay between retries (in seconds)
+RETRY_DELAY = 2
 
 class RealtimeApp:
     client: AsyncOpenAI
@@ -58,6 +64,7 @@ class RealtimeApp:
         if event_type == "error":
             log_msg += f": {event.error.message}"
         elif event_type == "response.audio_transcript.delta":
+            return
             log_msg += f": {event.delta}"
         elif event_type == "response.audio_transcript.done":
             log_msg += f": {event.transcript}"
@@ -100,123 +107,160 @@ class RealtimeApp:
         set_debug_callback(debug_to_stdout)
 
     async def handle_realtime_connection(self) -> None:
-        async with self.client.beta.realtime.connect(
-            model=OPENAI_MODEL,
-        ) as conn:
-            self.connection = conn
-            self.connected.set()
-            self.log("[INFO] Connected to Realtime API")
+        retry_count = 0
+        while retry_count < MAX_RETRIES and self.running:
+            try:
+                async with self.client.beta.realtime.connect(
+                    model=OPENAI_MODEL,
+                ) as conn:
+                    self.connection = conn
+                    self.connected.set()
+                    self.log("[INFO] Connected to Realtime API")
+                    retry_count = 0  # Reset retry count on successful connection
 
-            # Use turn detection setting from config
-            await conn.session.update(session={
-                "turn_detection": OPENAI_TURN_DETECTION,
-                "modalities": OPENAI_MODALITIES,
-                "voice": OPENAI_VOICE,
-                "input_audio_transcription": {"model": OPENAI_TRANSCRIPTION_MODEL},
-                "instructions": OPENAI_INSTRUCTIONS
-            })
-            self.log("[INFO] Updated session settings")
+                    # Use turn detection setting from config
+                    await conn.session.update(session={
+                        "turn_detection": OPENAI_TURN_DETECTION,
+                        "modalities": OPENAI_MODALITIES,
+                        "voice": OPENAI_VOICE,
+                        "input_audio_transcription": {"model": OPENAI_TRANSCRIPTION_MODEL},
+                        "instructions": OPENAI_INSTRUCTIONS
+                    })
+                    self.log("[INFO] Updated session settings")
 
-            acc_items: dict[str, Any] = {}
+                    acc_items: dict[str, Any] = {}
 
-            async for event in conn:
-                if event.type == "session.created":
-                    self.session = event.session
-                    self.log_event(event)
-                    self.log("[INFO] Ready to record. Press K to start, Q to quit.")
-                    continue
-
-                if event.type == "session.updated":
-                    self.session = event.session
-                    self.log_event(event)
-                    continue
-
-                if event.type == "response.audio.delta":
-                    if event.item_id != self.last_audio_item_id:
-                        self.audio_player.reset_frame_count()
-                        self.last_audio_item_id = event.item_id
-                        self.log_event(event)
-                        self.is_playing_audio.set()
-
-                    bytes_data = base64.b64decode(event.delta)
-                    self.audio_player.add_data(bytes_data)
-                    continue
-
-                if event.type == "response.done":
-                    self.log_event(event)
-                    continue
-
-                if event.type == "response.audio_transcript.delta":
                     try:
-                        text = acc_items[event.item_id]
-                    except KeyError:
-                        acc_items[event.item_id] = event.delta
-                    else:
-                        acc_items[event.item_id] = text + event.delta
+                        async for event in conn:
+                            if not self.running:
+                                break
+                            
+                            if event.type == "session.created":
+                                self.session = event.session
+                                self.log_event(event)
+                                self.log("[INFO] Ready to record. Press K to start, Q to quit.")
+                                continue
 
-                    self.log_event(event)
-                    continue
+                            if event.type == "session.updated":
+                                self.session = event.session
+                                self.log_event(event)
+                                continue
 
-                # Handle error events with more detail
-                if event.type == "error":
-                    self.log_event(event)
-                    continue
+                            if event.type == "response.audio.delta":
+                                if event.item_id != self.last_audio_item_id:
+                                    self.audio_player.reset_frame_count()
+                                    self.last_audio_item_id = event.item_id
+                                    self.log_event(event)
+                                    self.is_playing_audio.set()
 
-                # Add detailed handling for conversation and response events
-                if event.type == "conversation.item.created":
-                    self.log_event(event)
-                    continue
+                                bytes_data = base64.b64decode(event.delta)
+                                self.audio_player.add_data(bytes_data)
+                                continue
 
-                if event.type == "conversation.item.input_audio_transcription.completed":
-                    self.log_event(event)
-                    continue
+                            if event.type == "input_audio_buffer.speech_started":
+                                self.log_event(event)
+                                if not DISABLE_RECORDING_DURING_PLAYBACK or not self.is_playing_audio.is_set():
+                                    self.log_with_breaks("[DEBUG] Speech detected, cancelling ongoing response and clearing audio buffer")
+                                    # Cancel ongoing response and clear audio buffer when speech starts
+                                    asyncio.create_task(self.connection.send({"type": "response.cancel"}))
+                                    self.audio_player.stop()
+                                continue
 
-                if event.type == "response.created":
-                    self.log_event(event)
-                    continue
+                            if event.type == "response.done":
+                                self.log_event(event)
+                                continue
 
-                if event.type == "response.output_item.added":
-                    self.log_event(event)
-                    continue
+                            if event.type == "response.audio_transcript.delta":
+                                try:
+                                    text = acc_items[event.item_id]
+                                except KeyError:
+                                    acc_items[event.item_id] = event.delta
+                                else:
+                                    acc_items[event.item_id] = text + event.delta
 
-                if event.type == "response.content_part.added":
-                    self.log_event(event)
-                    continue
+                                self.log_event(event)
+                                continue
 
-                if event.type == "response.audio.done":
-                    self.log_event(event)
-                    continue
+                            # Handle error events with more detail
+                            if event.type == "error":
+                                self.log_event(event)
+                                continue
 
-                if event.type == "response.audio_transcript.done":
-                    self.log_event(event)
-                    continue
+                            # Add detailed handling for conversation and response events
+                            if event.type == "conversation.item.created":
+                                self.log_event(event)
+                                continue
 
-                if event.type == "response.content_part.done":
-                    self.log_event(event)
-                    continue
+                            if event.type == "conversation.item.input_audio_transcription.completed":
+                                self.log_event(event)
+                                continue
 
-                if event.type == "response.output_item.done":
-                    self.log_event(event)
-                    continue
+                            if event.type == "response.created":
+                                self.log_event(event)
+                                continue
 
-                if event.type == "input_audio_buffer.speech_started":
-                    self.log_event(event)
-                    continue
+                            if event.type == "response.output_item.added":
+                                self.log_event(event)
+                                continue
 
-                if event.type == "input_audio_buffer.speech_stopped":
-                    self.log_event(event)
-                    continue
+                            if event.type == "response.content_part.added":
+                                self.log_event(event)
+                                continue
 
-                if event.type == "input_audio_buffer.committed":
-                    self.log_event(event)
-                    continue
+                            if event.type == "response.audio.done":
+                                self.log_event(event)
+                                continue
 
-                if event.type == "rate_limits.updated":
-                    self.log_event(event)
-                    continue
+                            if event.type == "response.audio_transcript.done":
+                                self.log_event(event)
+                                continue
 
-                # Fallback for any unhandled events
-                self.log_event(event)
+                            if event.type == "response.content_part.done":
+                                self.log_event(event)
+                                continue
+
+                            if event.type == "response.output_item.done":
+                                self.log_event(event)
+                                continue
+
+                            if event.type == "input_audio_buffer.speech_started":
+                                self.log_event(event)
+                                continue
+
+                            if event.type == "input_audio_buffer.speech_stopped":
+                                self.log_event(event)
+                                continue
+
+                            if event.type == "input_audio_buffer.committed":
+                                self.log_event(event)
+                                continue
+
+                            if event.type == "rate_limits.updated":
+                                self.log_event(event)
+                                continue
+
+                            # Fallback for any unhandled events
+                            self.log_event(event)
+
+                    except Exception as e:
+                        if not self.running:
+                            return
+                        self.log(f"[ERROR] Connection error: {e}")
+                        raise  # Re-raise to trigger retry
+
+            except Exception as e:
+                if not self.running:
+                    return
+                
+                retry_count += 1
+                if retry_count < MAX_RETRIES:
+                    self.log(f"[ERROR] Connection failed: {e}. Retrying in {RETRY_DELAY} seconds... (Attempt {retry_count}/{MAX_RETRIES})")
+                    self.connected.clear()
+                    await asyncio.sleep(RETRY_DELAY)
+                else:
+                    self.log(f"[ERROR] Failed to establish connection after {MAX_RETRIES} attempts: {e}")
+                    self.running = False
+                    return
 
     async def _get_connection(self) -> AsyncRealtimeConnection:
         await self.connected.wait()
@@ -247,18 +291,29 @@ class RealtimeApp:
                     await asyncio.sleep(0)
                     continue
 
-                # Only process audio input if we should be sending AND we're not playing audio
-                if not self.should_send_audio.is_set() or self.is_playing_audio.is_set():
-                    sent_audio = False  # Reset sent_audio when we stop sending
+                # Only check recording during playback if the feature is enabled
+                if DISABLE_RECORDING_DURING_PLAYBACK and self.is_playing_audio.is_set():
+                    self.log_with_breaks(f"[DEBUG] Recording during playback is disabled")
+                    if self.is_recording:
+                        self.is_recording = False
+                        self.log_with_breaks("[INFO] Paused recording while audio is playing")
+                    sent_audio = False
                     await asyncio.sleep(0)
                     continue
 
-                self.is_recording = True
+                # Wait for recording to be enabled
+                if not self.should_send_audio.is_set():
+                    if self.is_recording:
+                        self.is_recording = False
+                    sent_audio = False
+                    await asyncio.sleep(0)
+                    continue
+
                 data, _ = stream.read(read_size)
+                self.is_recording = True
 
                 connection = await self._get_connection()
                 if not sent_audio:
-                    asyncio.create_task(connection.send({"type": "response.cancel"}))
                     sent_audio = True
 
                 await connection.input_audio_buffer.append(audio=base64.b64encode(cast(Any, data)).decode("utf-8"))
