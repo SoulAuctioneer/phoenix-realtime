@@ -9,19 +9,17 @@ import asyncio
 import sys
 from typing import Any, cast
 
-from audio_util import (
-    # INPUT_DEVICE_INDEX, 
-    AUDIO_INPUT_SAMPLE_RATE, AUDIO_CHANNELS,
-    AudioPlayerAsync, set_debug_callback
-)
+from audio_util import ( AudioPlayerAsync, set_debug_callback )
 
 from openai import AsyncOpenAI
 from openai.types.beta.realtime.session import Session
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 from config import (
-    AUDIO_INPUT_DEVICE, OPENAI_API_KEY, OPENAI_MODEL, OPENAI_VOICE, OPENAI_MODALITIES,
+    AUDIO_INPUT_DEVICE, AUDIO_OUTPUT_DEVICE,
+    AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_CHANNELS,
+    OPENAI_API_KEY, OPENAI_MODEL, OPENAI_VOICE, OPENAI_MODALITIES,
     OPENAI_INSTRUCTIONS, OPENAI_TRANSCRIPTION_MODEL, OPENAI_TURN_DETECTION,
-    ALLOW_RECORDING_DURING_PLAYBACK
+    ALLOW_RECORDING_DURING_PLAYBACK, AUDIO_INPUT_BUFFER_SIZE_MS
 )
 
 # Maximum number of connection retries
@@ -227,7 +225,7 @@ class RealtimeApp:
         import sounddevice as sd  # type: ignore
         device_info = sd.query_devices()
         self.log(str(device_info))
-        read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
+        read_size = int(AUDIO_INPUT_SAMPLE_RATE * (AUDIO_INPUT_BUFFER_SIZE_MS / 1000))  # Convert ms to seconds
 
         try:
             while self.is_running:
@@ -307,7 +305,7 @@ class RealtimeApp:
         read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
         self.stream = sd.InputStream(
             device=AUDIO_INPUT_DEVICE,
-            channels=AUDIO_CHANNELS,
+            channels=AUDIO_OUTPUT_CHANNELS,
             samplerate=AUDIO_INPUT_SAMPLE_RATE,
             dtype="int16",
         )

@@ -1,18 +1,19 @@
 import os
 
-# Audio Configuration
+# Audio Configuration - Capture
 AUDIO_INPUT_DEVICE = None  # Will use default device
-AUDIO_OUTPUT_DEVICE = None  # Will use default device
-AUDIO_CHUNK_LENGTH_S = 0.05
-# Split sample rate into input and output configurations
 AUDIO_INPUT_SAMPLE_RATE = 24000  # Sample rate for recording
-AUDIO_OUTPUT_SAMPLE_RATE = 24000  # Sample rate for playback
-AUDIO_CHANNELS = 1  # Mono microphone input
-AUDIO_WIDTH = 2  # Bytes per sample
+AUDIO_INPUT_BUFFER_SIZE_MS = 50  # Buffer size in milliseconds. Use 50ms for Raspberry Pi, 20ms for powerful devices
+AUDIO_INPUT_CHANNELS = 1  # Mono microphone input
 
-# Audio performance tuning
-AUDIO_LATENCY_MODE = 'high'  # Options: 'low' or 'high'. Use 'high' for more stable playback on slower devices
-AUDIO_BLOCKSIZE_MULTIPLIER = 2  # Multiply the base blocksize by this value. Use higher values (e.g. 2) for slower devices
+# Audio Configuration - Playback
+AUDIO_OUTPUT_DEVICE = None  # Will use default device
+AUDIO_OUTPUT_SAMPLE_RATE = 24000  # Sample rate for playback
+AUDIO_OUTPUT_CHUNK_LENGTH_S = 0.05
+AUDIO_OUTPUT_CHANNELS = 1  # Mono speaker output
+AUDIO_OUTPUT_WIDTH = 2  # Bytes per sample
+AUDIO_OUTPUT_LATENCY_MODE = 'high'  # Options: 'low' or 'high'. Use 'high' for more stable playback on slower devices
+AUDIO_OUTPUT_BLOCKSIZE_MULTIPLIER = 2  # Multiply the base blocksize by this value. Use higher values (e.g. 2) for slower devices
 
 # Debug Configuration
 DEBUG_AUDIO = False

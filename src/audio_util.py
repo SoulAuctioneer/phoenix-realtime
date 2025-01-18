@@ -10,13 +10,13 @@ from typing import Callable, Awaitable, Optional, Tuple
 import numpy as np
 # import pyaudio
 import sounddevice as sd
-from pydub import AudioSegment
+# from pydub import AudioSegment
 
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 from config import (
-    AUDIO_INPUT_DEVICE, AUDIO_OUTPUT_DEVICE, AUDIO_CHUNK_LENGTH_S,
-    AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_WIDTH,
-    AUDIO_LATENCY_MODE, AUDIO_BLOCKSIZE_MULTIPLIER
+    AUDIO_INPUT_DEVICE, AUDIO_OUTPUT_DEVICE, AUDIO_OUTPUT_CHUNK_LENGTH_S,
+    AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE, AUDIO_INPUT_CHANNELS, AUDIO_OUTPUT_CHANNELS, AUDIO_OUTPUT_WIDTH,
+    AUDIO_OUTPUT_LATENCY_MODE, AUDIO_OUTPUT_BLOCKSIZE_MULTIPLIER
 )
 
 # Global debug callback
@@ -68,32 +68,31 @@ def debug_audio_devices(target_index: int | None = None):
 
 
 # NOTE: Unused, what's it for?
-def audio_to_pcm16_base64(audio_bytes: bytes) -> bytes:
-    # load the audio file from the byte stream
-    audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
-    print(f"Loaded audio: {audio.frame_rate=} {audio.channels=} {audio.sample_width=} {audio.frame_width=}")
-    # resample to input sample rate mono pcm16
-    pcm_audio = audio.set_frame_rate(AUDIO_INPUT_SAMPLE_RATE).set_channels(AUDIO_CHANNELS).set_sample_width(2).raw_data
-    return pcm_audio
+# def audio_to_pcm16_base64(audio_bytes: bytes) -> bytes:
+#     # load the audio file from the byte stream
+#     audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
+#     print(f"Loaded audio: {audio.frame_rate=} {audio.channels=} {audio.sample_width=} {audio.frame_width=}")
+#     # resample to input sample rate mono pcm16
+#     pcm_audio = audio.set_frame_rate(AUDIO_INPUT_SAMPLE_RATE).set_channels(AUDIO_CHANNELS).set_sample_width(2).raw_data
+#     return pcm_audio
 
 
 class AudioPlayerAsync:
     def __init__(self):
-        self.sample_rate = AUDIO_OUTPUT_SAMPLE_RATE  # Use output sample rate for playback
         self.queue = []
         self.lock = threading.Lock()
         
         # Calculate blocksize using the multiplier from config
-        blocksize = int(AUDIO_CHUNK_LENGTH_S * self.sample_rate * AUDIO_BLOCKSIZE_MULTIPLIER)
+        blocksize = int(AUDIO_OUTPUT_CHUNK_LENGTH_S * AUDIO_OUTPUT_SAMPLE_RATE * AUDIO_OUTPUT_BLOCKSIZE_MULTIPLIER)
         
         self.stream = sd.OutputStream(
             callback=self.callback,
             device=AUDIO_OUTPUT_DEVICE,
-            samplerate=self.sample_rate,
-            channels=AUDIO_CHANNELS,
+            samplerate=AUDIO_OUTPUT_SAMPLE_RATE,
+            channels=AUDIO_OUTPUT_CHANNELS,
             dtype=np.int16,
             blocksize=blocksize,
-            latency=AUDIO_LATENCY_MODE  # Use latency mode from config
+            latency=AUDIO_OUTPUT_LATENCY_MODE  # Use latency mode from config
         )
         self.playing = False
         self._frame_count = 0
@@ -128,13 +127,13 @@ class AudioPlayerAsync:
 
             try:
                 # Ensure the output data has the correct shape for stereo
-                if AUDIO_CHANNELS == 2:
+                if AUDIO_OUTPUT_CHANNELS == 2:
                     # Duplicate mono data to both channels if input is mono
                     if len(data.shape) == 1:
                         data = np.column_stack((data, data))
                     outdata[:] = data
                 else:
-                    outdata[:] = data.reshape(-1, AUDIO_CHANNELS)
+                    outdata[:] = data.reshape(-1, AUDIO_OUTPUT_CHANNELS)
             except Exception as e:
                 debug_print(f'Error in audio callback: {e}')
                 outdata.fill(0)  # Output silence on error
@@ -181,57 +180,3 @@ class AudioPlayerAsync:
 
     def terminate(self):
         self.stream.close()
-
-
-async def send_audio_worker_sounddevice(
-    connection: AsyncRealtimeConnection,
-    should_send: Callable[[], bool] | None = None,
-    start_send: Callable[[], Awaitable[None]] | None = None,
-):
-    sent_audio = False
-
-    device_info = sd.query_devices()
-    debug_print(str(device_info))
-
-    read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
-
-    stream = sd.InputStream(
-        device=AUDIO_INPUT_DEVICE,
-        channels=AUDIO_CHANNELS,
-        samplerate=AUDIO_INPUT_SAMPLE_RATE,
-        dtype="int16",
-    )
-    stream.start()
-
-    try:
-        while True:
-            if stream.read_available < read_size:
-                await asyncio.sleep(0)
-                continue
-
-            data, _ = stream.read(read_size)
-
-            if should_send() if should_send else True:
-                if not sent_audio and start_send:
-                    await start_send()
-                debug_print("Sending audio buffer")
-                await connection.send(
-                    {"type": "input_audio_buffer.append", "audio": base64.b64encode(data).decode("utf-8")}
-                )
-                sent_audio = True
-
-            elif sent_audio:
-                debug_print("Done recording, triggering inference")
-                await connection.send({"type": "input_audio_buffer.commit"})
-                debug_print("Committed audio buffer")
-                await connection.send({"type": "response.create", "response": {}})
-                debug_print("Created response")
-                sent_audio = False
-
-            await asyncio.sleep(0)
-
-    except KeyboardInterrupt:
-        pass
-    finally:
-        stream.stop()
-        stream.close()
