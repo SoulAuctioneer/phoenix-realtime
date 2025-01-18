@@ -5,12 +5,12 @@ import sys
 import base64
 import asyncio
 import threading
-from typing import Callable, Awaitable, Optional, Tuple
+import ctypes
+from typing import Callable, Awaitable, Optional, Tuple, Any
 
 import numpy as np
-# import pyaudio
-import sounddevice as sd
-from pydub import AudioSegment
+#from pydub import AudioSegment
+import pipewire as pw
 
 from openai.resources.beta.realtime.realtime import AsyncRealtimeConnection
 from config import (
@@ -33,111 +33,112 @@ def debug_print(msg: str):
         # Only print to stdout if no callback is set
         print(msg)
 
-def debug_audio_devices(target_index: int | None = None):
-    """Print detailed information about audio devices.
-    
-    Args:
-        target_index: If provided, prints extra details about this specific device index
-    """
+def debug_audio_devices():
+    """Print detailed information about PipeWire audio devices."""
     try:
-        device_info = sd.query_devices()
-        print("\n=== Audio Device Information ===")
-        print("All devices:")
-        for idx, device in enumerate(device_info):
-            print(f"\nDevice {idx}: {device['name']}")
-            print(f"  Max Input Channels: {device['max_input_channels']}")
-            print(f"  Max Output Channels: {device['max_output_channels']}")
-            print(f"  Default Sample Rate: {device['default_samplerate']}")
+        with pw.Context() as context:
+            core = context.connect()
+            registry = core.get_registry()
             
-        if target_index is not None:
-            try:
-                target_info = sd.query_devices(target_index)
-                print(f"\n=== Target Device (index {target_index}) Details ===")
-                print(f"Name: {target_info['name']}")
-                print(f"Max Input Channels: {target_info['max_input_channels']}")
-                print(f"Max Output Channels: {target_info['max_output_channels']}")
-                print(f"Default Sample Rate: {target_info['default_samplerate']}")
-                print(f"Host API: {target_info['hostapi']}")
-                print("Full device info:", target_info)
-            except Exception as e:
-                print(f"Error querying target device {target_index}: {e}")
-                
+            print("\n=== Audio Device Information ===")
+            print("All devices:")
+            
+            def registry_event(registry, id, type, version, props):
+                if type == pw.NODE_TYPE:
+                    name = props.get("node.name", "Unknown")
+                    desc = props.get("node.description", "No description")
+                    media_class = props.get("media.class", "Unknown")
+                    print(f"\nDevice ID: {id}")
+                    print(f"  Name: {name}")
+                    print(f"  Description: {desc}")
+                    print(f"  Media Class: {media_class}")
+            
+            registry.add_listener(registry_event)
+            core.sync()
+            
     except Exception as e:
         print(f"Error querying audio devices: {e}")
     print("\n=== End Audio Device Information ===\n")
 
-
-# NOTE: Unused, what's it for?
-def audio_to_pcm16_base64(audio_bytes: bytes) -> bytes:
-    # load the audio file from the byte stream
-    audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
-    print(f"Loaded audio: {audio.frame_rate=} {audio.channels=} {audio.sample_width=} {audio.frame_width=}")
-    # resample to input sample rate mono pcm16
-    pcm_audio = audio.set_frame_rate(AUDIO_INPUT_SAMPLE_RATE).set_channels(AUDIO_CHANNELS).set_sample_width(2).raw_data
-    return pcm_audio
-
+# def audio_to_pcm16_base64(audio_bytes: bytes) -> bytes:
+#     # load the audio file from the byte stream
+#     audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
+#     print(f"Loaded audio: {audio.frame_rate=} {audio.channels=} {audio.sample_width=} {audio.frame_width=}")
+#     # resample to input sample rate mono pcm16
+#     pcm_audio = audio.set_frame_rate(AUDIO_INPUT_SAMPLE_RATE).set_channels(AUDIO_CHANNELS).set_sample_width(2).raw_data
+#     return pcm_audio
 
 class AudioPlayerAsync:
     def __init__(self):
-        self.sample_rate = AUDIO_OUTPUT_SAMPLE_RATE  # Use output sample rate for playback
+        self.sample_rate = AUDIO_OUTPUT_SAMPLE_RATE
         self.queue = []
         self.lock = threading.Lock()
-        
-        # Calculate blocksize using the multiplier from config
-        blocksize = int(AUDIO_CHUNK_LENGTH_S * self.sample_rate * AUDIO_BLOCKSIZE_MULTIPLIER)
-        
-        self.stream = sd.OutputStream(
-            callback=self.callback,
-            device=AUDIO_OUTPUT_DEVICE,
-            samplerate=self.sample_rate,
-            channels=AUDIO_CHANNELS,
-            dtype=np.int16,
-            blocksize=blocksize,
-            latency=AUDIO_LATENCY_MODE  # Use latency mode from config
-        )
         self.playing = False
         self._frame_count = 0
-        self.paused = False  # Add paused state
-        self.device = AUDIO_OUTPUT_DEVICE if AUDIO_OUTPUT_DEVICE is not None else sd.default.device[1]
-
-    def callback(self, outdata, frames, time, status):
-        if status:
-            # Log any errors but continue playback
-            debug_print(f'Audio callback status: {status}')
+        self.paused = False
+        
+        # Initialize PipeWire
+        self.pw = pw.Context()
+        self.core = self.pw.connect()
+        self.stream = None
+        self._setup_stream()
+        
+    def _setup_stream(self):
+        # Calculate buffer size
+        self.buffer_size = int(AUDIO_CHUNK_LENGTH_S * self.sample_rate * AUDIO_BLOCKSIZE_MULTIPLIER)
+        
+        # Create stream properties
+        props = {
+            "media.type": "Audio",
+            "audio.format": "S16LE",  # 16-bit signed little-endian
+            "audio.rate": self.sample_rate,
+            "audio.channels": AUDIO_CHANNELS,
+        }
+        
+        # Create the stream
+        self.stream = self.pw.Stream(
+            name="Phoenix Audio Player",
+            properties=props,
+            mode="output",
+            target=AUDIO_OUTPUT_DEVICE
+        )
+        
+        # Set up the callback
+        self.stream.connect_listener("process", self._process_callback)
+        
+    def _process_callback(self, data: Any) -> None:
+        if not data:
+            return
             
         with self.lock:
-            if self.paused:  # If paused, output silence
-                outdata.fill(0)
+            if self.paused:
+                data.fill(0)
                 return
-
-            data = np.empty(0, dtype=np.int16)
-
-            # get next item from queue if there is still space in the buffer
-            while len(data) < frames and len(self.queue) > 0:
+                
+            buffer_data = np.empty(0, dtype=np.int16)
+            
+            while len(buffer_data) < self.buffer_size and len(self.queue) > 0:
                 item = self.queue.pop(0)
-                frames_needed = frames - len(data)
-                data = np.concatenate((data, item[:frames_needed]))
+                frames_needed = self.buffer_size - len(buffer_data)
+                buffer_data = np.concatenate((buffer_data, item[:frames_needed]))
                 if len(item) > frames_needed:
                     self.queue.insert(0, item[frames_needed:])
-
-            self._frame_count += len(data)
-
-            # fill the rest of the frames with zeros if there is no more data
-            if len(data) < frames:
-                data = np.concatenate((data, np.zeros(frames - len(data), dtype=np.int16)))
-
+            
+            self._frame_count += len(buffer_data)
+            
+            if len(buffer_data) < self.buffer_size:
+                buffer_data = np.concatenate((buffer_data, np.zeros(self.buffer_size - len(buffer_data), dtype=np.int16)))
+            
             try:
-                # Ensure the output data has the correct shape for stereo
                 if AUDIO_CHANNELS == 2:
-                    # Duplicate mono data to both channels if input is mono
-                    if len(data.shape) == 1:
-                        data = np.column_stack((data, data))
-                    outdata[:] = data
+                    if len(buffer_data.shape) == 1:
+                        buffer_data = np.column_stack((buffer_data, buffer_data))
+                    data[:] = buffer_data
                 else:
-                    outdata[:] = data.reshape(-1, AUDIO_CHANNELS)
+                    data[:] = buffer_data.reshape(-1, AUDIO_CHANNELS)
             except Exception as e:
                 debug_print(f'Error in audio callback: {e}')
-                outdata.fill(0)  # Output silence on error
+                data.fill(0)
 
     def reset_frame_count(self):
         self._frame_count = 0
@@ -146,80 +147,143 @@ class AudioPlayerAsync:
         return self._frame_count
 
     def is_queue_empty(self) -> bool:
-        """Check if there is any audio data left to play"""
         with self.lock:
             return len(self.queue) == 0
 
     def add_data(self, data: bytes):
         with self.lock:
-            # bytes is pcm16 single channel audio data, convert to numpy array
             np_data = np.frombuffer(data, dtype=np.int16)
             self.queue.append(np_data)
             if not self.playing:
                 self.start()
 
     def start(self):
-        self.playing = True
-        self.stream.start()
+        if not self.playing:
+            self.playing = True
+            self.stream.activate()
 
     def pause(self):
-        """Pause audio playback without clearing the queue"""
         with self.lock:
             self.paused = True
 
     def resume(self):
-        """Resume audio playback"""
         with self.lock:
             self.paused = False
 
     def stop(self):
         self.playing = False
-        self.stream.stop()
+        self.stream.deactivate()
         with self.lock:
             self.queue = []
-            self.paused = False  # Reset pause state when stopping
+            self.paused = False
 
     def terminate(self):
-        self.stream.close()
+        if self.stream:
+            self.stream.disconnect()
+        if self.core:
+            self.core.disconnect()
+        if self.pw:
+            self.pw.disconnect()
 
+class AudioInputStream:
+    def __init__(self, sample_rate: int = AUDIO_INPUT_SAMPLE_RATE, channels: int = AUDIO_CHANNELS):
+        self.sample_rate = sample_rate
+        self.channels = channels
+        self.buffer = []
+        self.lock = threading.Lock()
+        
+        # Initialize PipeWire
+        self.pw = pw.Context()
+        self.core = self.pw.connect()
+        self.stream = None
+        self._setup_stream()
+        
+    def _setup_stream(self):
+        props = {
+            "media.type": "Audio",
+            "audio.format": "S16LE",
+            "audio.rate": self.sample_rate,
+            "audio.channels": self.channels,
+        }
+        
+        self.stream = self.pw.Stream(
+            name="Phoenix Audio Input",
+            properties=props,
+            mode="input",
+            target=AUDIO_INPUT_DEVICE
+        )
+        
+        self.stream.connect_listener("process", self._process_callback)
+        
+    def _process_callback(self, data: Any) -> None:
+        if not data:
+            return
+            
+        with self.lock:
+            self.buffer.append(np.array(data, dtype=np.int16))
+            
+    @property
+    def read_available(self) -> int:
+        with self.lock:
+            return sum(len(chunk) for chunk in self.buffer)
+            
+    def read(self, frames: int) -> Tuple[np.ndarray, Any]:
+        with self.lock:
+            if not self.buffer:
+                return np.zeros(frames, dtype=np.int16), None
+                
+            data = np.concatenate(self.buffer)
+            if len(data) >= frames:
+                result = data[:frames]
+                remaining = data[frames:]
+                self.buffer = [remaining] if len(remaining) > 0 else []
+                return result, None
+            else:
+                self.buffer = []
+                return np.pad(data, (0, frames - len(data))), None
+                
+    def start(self):
+        self.stream.activate()
+        
+    def stop(self):
+        self.stream.deactivate()
+        
+    def close(self):
+        if self.stream:
+            self.stream.disconnect()
+        if self.core:
+            self.core.disconnect()
+        if self.pw:
+            self.pw.disconnect()
 
-async def send_audio_worker_sounddevice(
+async def send_audio_worker_pipewire(
     connection: AsyncRealtimeConnection,
     should_send: Callable[[], bool] | None = None,
     start_send: Callable[[], Awaitable[None]] | None = None,
-):
+) -> None:
     sent_audio = False
-
-    device_info = sd.query_devices()
-    debug_print(str(device_info))
-
     read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
-
-    stream = sd.InputStream(
-        device=AUDIO_INPUT_DEVICE,
-        channels=AUDIO_CHANNELS,
-        samplerate=AUDIO_INPUT_SAMPLE_RATE,
-        dtype="int16",
-    )
+    
+    stream = AudioInputStream()
     stream.start()
-
+    
     try:
         while True:
             if stream.read_available < read_size:
                 await asyncio.sleep(0)
                 continue
-
+                
             data, _ = stream.read(read_size)
-
+            
             if should_send() if should_send else True:
                 if not sent_audio and start_send:
                     await start_send()
                 debug_print("Sending audio buffer")
                 await connection.send(
-                    {"type": "input_audio_buffer.append", "audio": base64.b64encode(data).decode("utf-8")}
+                    {"type": "input_audio_buffer.append", "audio": base64.b64encode(data.tobytes()).decode("utf-8")}
                 )
                 sent_audio = True
-
+                
             elif sent_audio:
                 debug_print("Done recording, triggering inference")
                 await connection.send({"type": "input_audio_buffer.commit"})
@@ -227,9 +291,9 @@ async def send_audio_worker_sounddevice(
                 await connection.send({"type": "response.create", "response": {}})
                 debug_print("Created response")
                 sent_audio = False
-
+                
             await asyncio.sleep(0)
-
+            
     except KeyboardInterrupt:
         pass
     finally:

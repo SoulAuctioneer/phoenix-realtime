@@ -10,7 +10,7 @@ import sys
 from typing import Any, cast
 
 from audio_util import (
-    # INPUT_DEVICE_INDEX, 
+    AudioInputStream,
     AUDIO_INPUT_SAMPLE_RATE, AUDIO_CHANNELS,
     AudioPlayerAsync, set_debug_callback
 )
@@ -224,9 +224,6 @@ class RealtimeApp:
         return self.connection
 
     async def send_mic_audio(self) -> None:
-        import sounddevice as sd  # type: ignore
-        device_info = sd.query_devices()
-        self.log(str(device_info))
         read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
 
         try:
@@ -250,7 +247,7 @@ class RealtimeApp:
                 data, _ = self.stream.read(read_size)
                 connection = await self._get_connection()
 
-                await connection.input_audio_buffer.append(audio=base64.b64encode(cast(Any, data)).decode("utf-8"))
+                await connection.input_audio_buffer.append(audio=base64.b64encode(cast(Any, data.tobytes())).decode("utf-8"))
                 await asyncio.sleep(0)
 
         except KeyboardInterrupt:
@@ -303,14 +300,7 @@ class RealtimeApp:
             delattr(self, 'stream')
 
         # Create a fresh stream
-        import sounddevice as sd
-        read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
-        self.stream = sd.InputStream(
-            device=AUDIO_INPUT_DEVICE,
-            channels=AUDIO_CHANNELS,
-            samplerate=AUDIO_INPUT_SAMPLE_RATE,
-            dtype="int16",
-        )
+        self.stream = AudioInputStream()
         self.stream.start()
         
         self.is_recording.set()
