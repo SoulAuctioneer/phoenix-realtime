@@ -88,7 +88,8 @@ def get_device_info() -> str:
         return f"""Current audio configuration:
             Input Device ({INPUT_DEVICE_INDEX}): {input_name}
             Output Device ({OUTPUT_DEVICE_INDEX}): {output_name}
-            Sample Rate: {AUDIO_SAMPLE_RATE}Hz
+            Input Sample Rate: {AUDIO_INPUT_SAMPLE_RATE}Hz
+            Output Sample Rate: {AUDIO_OUTPUT_SAMPLE_RATE}Hz
             Channels: {AUDIO_CHANNELS}
             """
     except Exception as e:
