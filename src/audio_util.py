@@ -175,13 +175,13 @@ def audio_to_pcm16_base64(audio_bytes: bytes) -> bytes:
     audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
     print(f"Loaded audio: {audio.frame_rate=} {audio.channels=} {audio.sample_width=} {audio.frame_width=}")
     # resample to 24kHz mono pcm16
-    pcm_audio = audio.set_frame_rate(SAMPLE_RATE).set_channels(CHANNELS).set_sample_width(2).raw_data
+    pcm_audio = audio.set_frame_rate(AUDIO_SAMPLE_RATE).set_channels(AUDIO_CHANNELS).set_sample_width(2).raw_data
     return pcm_audio
 
 
 class AudioPlayerAsync:
     def __init__(self):
-        self.sample_rate = 24000  # Store sample rate as instance variable
+        self.sample_rate = AUDIO_SAMPLE_RATE  # Use config value instead of hardcoded
         self.queue = []
         self.lock = threading.Lock()
         self.stream = sd.OutputStream(
@@ -282,12 +282,12 @@ async def send_audio_worker_sounddevice(
     device_info = sd.query_devices()
     debug_print(str(device_info))
 
-    read_size = int(SAMPLE_RATE * 0.02)
+    read_size = int(AUDIO_SAMPLE_RATE * 0.02)
 
     stream = sd.InputStream(
         device=INPUT_DEVICE_INDEX,
-        channels=CHANNELS,
-        samplerate=SAMPLE_RATE,
+        channels=AUDIO_CHANNELS,
+        samplerate=AUDIO_SAMPLE_RATE,
         dtype="int16",
     )
     stream.start()
