@@ -18,109 +18,6 @@ from config import (
     AUDIO_INPUT_SAMPLE_RATE, AUDIO_OUTPUT_SAMPLE_RATE, AUDIO_CHANNELS, AUDIO_WIDTH
 )
 
-def find_default_devices() -> Tuple[Optional[int], Optional[int]]:
-    """Find system default input and output devices"""
-    try:
-        devices = sd.query_devices()
-        default_input = sd.default.device[0]
-        default_output = sd.default.device[1]
-        
-        # Validate default devices exist and are capable
-        if default_input is not None and default_input < len(devices):
-            if devices[default_input]['max_input_channels'] == 0:
-                default_input = None
-        if default_output is not None and default_output < len(devices):
-            if devices[default_output]['max_output_channels'] == 0:
-                default_output = None
-                
-        return default_input, default_output
-    except Exception as e:
-        debug_print(f"Error finding default devices: {e}")
-        return None, None
-
-def find_respeaker_device() -> Tuple[Optional[int], Optional[int]]:
-    """Find ReSpeaker input and output device indices.
-    Returns tuple of (input_index, output_index)"""
-    devices = sd.query_devices()
-    input_idx = None
-    output_idx = None
-    
-    # Common ReSpeaker and USB audio keywords
-    keywords = ['seeed', 'respeaker', 'usb audio', 'array device']
-    
-    for idx, device in enumerate(devices):
-        name = device['name'].lower()
-        if any(keyword in name for keyword in keywords):
-            if device['max_input_channels'] > 0:
-                input_idx = idx
-            if device['max_output_channels'] > 0:
-                output_idx = idx
-                
-    return input_idx, output_idx
-
-# # First try to get devices from config
-# input_device = AUDIO_INPUT_DEVICE
-# output_device = AUDIO_OUTPUT_DEVICE
-
-# # If not set in config, try to find ReSpeaker
-# if input_device is None or output_device is None:
-#     input_device, output_device = find_respeaker_device()
-    
-#     # If no ReSpeaker found, use system defaults
-#     if input_device is None or output_device is None:
-#         default_input, default_output = find_default_devices()
-#         if input_device is None:
-#             input_device = default_input
-#         if output_device is None:
-#             output_device = default_output
-
-# # Use device indices, fallback to 0 if not found
-# INPUT_DEVICE_INDEX = 0 if input_device is None else input_device
-# OUTPUT_DEVICE_INDEX = 0 if output_device is None else output_device
-
-def get_device_info() -> str:
-    """Get formatted string of current device configuration"""
-    try:
-        devices = sd.query_devices()
-        input_name = devices[INPUT_DEVICE_INDEX]['name'] if INPUT_DEVICE_INDEX < len(devices) else "Unknown"
-        output_name = devices[OUTPUT_DEVICE_INDEX]['name'] if OUTPUT_DEVICE_INDEX < len(devices) else "Unknown"
-        
-        return f"""Current audio configuration:
-            Input Device ({INPUT_DEVICE_INDEX}): {input_name}
-            Output Device ({OUTPUT_DEVICE_INDEX}): {output_name}
-            Input Sample Rate: {AUDIO_INPUT_SAMPLE_RATE}Hz
-            Output Sample Rate: {AUDIO_OUTPUT_SAMPLE_RATE}Hz
-            Channels: {AUDIO_CHANNELS}
-            """
-    except Exception as e:
-        return f"Error getting device info: {e}"
-
-def validate_audio_config() -> bool:
-    """Validate the current audio configuration"""
-    try:
-        devices = sd.query_devices()
-        if INPUT_DEVICE_INDEX >= len(devices):
-            debug_print(f"Invalid input device index {INPUT_DEVICE_INDEX}")
-            return False
-        if OUTPUT_DEVICE_INDEX >= len(devices):
-            debug_print(f"Invalid output device index {OUTPUT_DEVICE_INDEX}")
-            return False
-            
-        input_device = devices[INPUT_DEVICE_INDEX]
-        if input_device['max_input_channels'] < AUDIO_CHANNELS:
-            debug_print(f"Input device does not support {AUDIO_CHANNELS} channels")
-            return False
-            
-        output_device = devices[OUTPUT_DEVICE_INDEX]
-        if output_device['max_output_channels'] < AUDIO_CHANNELS:
-            debug_print(f"Output device does not support {AUDIO_CHANNELS} channels")
-            return False
-            
-        return True
-    except Exception as e:
-        debug_print(f"Error validating audio config: {e}")
-        return False
-
 # Global debug callback
 debug_callback: Callable[[str], None] | None = None
 
@@ -134,7 +31,6 @@ def debug_print(msg: str):
     else:
         # Only print to stdout if no callback is set
         print(msg)
-
 
 def debug_audio_devices(target_index: int | None = None):
     """Print detailed information about audio devices.
@@ -185,10 +81,9 @@ class AudioPlayerAsync:
         self.sample_rate = AUDIO_OUTPUT_SAMPLE_RATE  # Use output sample rate for playback
         self.queue = []
         self.lock = threading.Lock()
-        print(f"Initializing audio player with device {OUTPUT_DEVICE_INDEX} and sample rate {self.sample_rate}")
         self.stream = sd.OutputStream(
             callback=self.callback,
-            # device=OUTPUT_DEVICE_INDEX,
+            device=AUDIO_OUTPUT_DEVICE,
             samplerate=self.sample_rate,
             channels=AUDIO_CHANNELS,
             dtype=np.int16,
@@ -287,7 +182,7 @@ async def send_audio_worker_sounddevice(
     read_size = int(AUDIO_INPUT_SAMPLE_RATE * 0.02)
 
     stream = sd.InputStream(
-        #device=INPUT_DEVICE_INDEX,
+        device=AUDIO_INPUT_DEVICE,
         channels=AUDIO_CHANNELS,
         samplerate=AUDIO_INPUT_SAMPLE_RATE,
         dtype="int16",

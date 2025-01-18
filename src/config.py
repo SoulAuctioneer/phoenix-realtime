@@ -1,8 +1,8 @@
 import os
 
 # Audio Configuration
-AUDIO_INPUT_DEVICE = None  # Will be auto-detected
-AUDIO_OUTPUT_DEVICE = None  # Will be auto-detected
+AUDIO_INPUT_DEVICE = None  # Will use default device
+AUDIO_OUTPUT_DEVICE = None  # Will use default device
 AUDIO_CHUNK_LENGTH_S = 0.05
 # Split sample rate into input and output configurations
 AUDIO_INPUT_SAMPLE_RATE = 24000  # Sample rate for recording
