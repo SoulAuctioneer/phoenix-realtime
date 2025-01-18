@@ -160,6 +160,7 @@ class RealtimeApp:
     async def _cancel_response(self) -> None:
         """Helper method to safely cancel an active response"""
         if self.connection and self.is_response_active.is_set():
+            self.log("Cancelling response")
             try:
                 await self.connection.send({"type": "response.cancel"})
             except:
@@ -169,12 +170,12 @@ class RealtimeApp:
     async def _cancel_audio_playback(self) -> None:
         """Helper method to safely cancel audio playback"""
         if self.is_playing_audio.is_set():
+            self.log("Cancelling audio playback")
             self.audio_player.stop()
             self.is_playing_audio.clear()
 
     async def cancel_response_and_playback(self) -> None:
         """Cancel any ongoing audio playback and response"""
-        self.log("Cancelling audio playback and response")
         await self._cancel_response()
         await self._cancel_audio_playback()
 
