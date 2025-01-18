@@ -140,8 +140,36 @@ class RealtimeApp:
                     self.is_running = False
                     return
 
+    async def _handle_session_event(self, event: Any) -> None:
+        """Handle session.created and session.updated events."""
+        self.session = event.session
+        self.log("Ready to record. Press K to start, Q to quit.")
+
+    async def _handle_audio_delta(self, event: Any) -> None:
+        """Handle response.audio.delta events."""
+        if event.item_id != self.last_audio_item_id:
+            self.audio_player.reset_frame_count()
+            self.last_audio_item_id = event.item_id
+            self.is_playing_audio.set()
+
+        bytes_data = base64.b64decode(event.delta)
+        self.audio_player.add_data(bytes_data)
+
+    async def _handle_speech_started(self, event: Any) -> None:
+        """Handle input_audio_buffer.speech_started events."""
+        if not ALLOW_RECORDING_DURING_PLAYBACK:
+            return
+
+        if self.is_response_active.is_set() or self.is_playing_audio.is_set():
+            self.log("Speech detected during active response, cancelling response")
+            if self.is_response_active.is_set():
+                asyncio.create_task(self.connection.send({"type": "response.cancel"}))
+            if self.is_playing_audio.is_set():
+                self.audio_player.stop()
+
     async def _process_events(self) -> None:
-        acc_items: dict[str, Any] = {}
+        """Process events from the realtime connection."""
+        acc_items: dict[str, str] = {}
 
         try:
             async for event in self.connection:
@@ -150,47 +178,24 @@ class RealtimeApp:
 
                 self.log_event(event)
 
-                if event.type == "session.created":
-                    self.session = event.session
-                    self.log("Ready to record. Press K to start, Q to quit.")
-
-                elif event.type == "session.updated":
-                    self.session = event.session
-                    self.log("Ready to record. Press K to start, Q to quit.")
-
-                elif event.type == "response.audio.delta":
-                    if event.item_id != self.last_audio_item_id:
-                        self.audio_player.reset_frame_count()
-                        self.last_audio_item_id = event.item_id
-                        self.is_playing_audio.set()
-
-                    bytes_data = base64.b64decode(event.delta)
-                    self.audio_player.add_data(bytes_data)
-
-                elif event.type == "input_audio_buffer.speech_started":
-                    if ALLOW_RECORDING_DURING_PLAYBACK:
-                        # May be disabled if not using headphones or echo cancellation, because the audio feedback loop where the API hears itself confuses it).
-                        # Cancel any response and stop any audio playback.
-                        if self.is_response_active.is_set() or self.is_playing_audio.is_set():
-                            self.log("Speech detected during active response, cancelling response")
-                            if self.is_response_active.is_set():
-                                asyncio.create_task(self.connection.send({"type": "response.cancel"}))
-                            if self.is_playing_audio.is_set():
-                                self.audio_player.stop()
-
-                elif event.type == "response.created":
-                    self.is_response_active.set()
-
-                elif event.type == "response.done":
-                    self.is_response_active.clear()
-
-                elif event.type == "response.audio_transcript.delta":
-                    try:
-                        text = acc_items[event.item_id]
-                    except KeyError:
-                        acc_items[event.item_id] = event.delta
-                    else:
-                        acc_items[event.item_id] = text + event.delta
+                match event.type:
+                    case "session.created" | "session.updated":
+                        await self._handle_session_event(event)
+                    
+                    case "response.audio.delta":
+                        await self._handle_audio_delta(event)
+                    
+                    case "input_audio_buffer.speech_started":
+                        await self._handle_speech_started(event)
+                    
+                    case "response.created":
+                        self.is_response_active.set()
+                    
+                    case "response.done":
+                        self.is_response_active.clear()
+                    
+                    case "response.audio_transcript.delta":
+                        acc_items[event.item_id] = acc_items.get(event.item_id, "") + event.delta
 
         except Exception as e:
             if not self.is_running:
