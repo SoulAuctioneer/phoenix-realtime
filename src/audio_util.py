@@ -234,6 +234,11 @@ class AudioPlayerAsync:
     def get_frame_count(self):
         return self._frame_count
 
+    def is_queue_empty(self) -> bool:
+        """Check if there is any audio data left to play"""
+        with self.lock:
+            return len(self.queue) == 0
+
     def add_data(self, data: bytes):
         with self.lock:
             # bytes is pcm16 single channel audio data, convert to numpy array
